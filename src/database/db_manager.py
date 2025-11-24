@@ -302,6 +302,16 @@ class DBManager:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
+                -- Tabla de configuración de paneles (dimensiones y posición)
+                CREATE TABLE IF NOT EXISTS panel_settings (
+                    panel_name TEXT PRIMARY KEY,
+                    width INTEGER NOT NULL DEFAULT 380,
+                    height INTEGER NOT NULL DEFAULT 500,
+                    pos_x INTEGER,
+                    pos_y INTEGER,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
                 -- Tabla de perfiles de navegador
                 CREATE TABLE IF NOT EXISTS browser_profiles (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3986,6 +3996,90 @@ class DBManager:
         except Exception as e:
             logger.error(f"Error deleting component type: {e}")
             return False
+
+    # ==================== Panel Settings (Dimensions & Position) ====================
+
+    def save_panel_settings(self, panel_name: str, width: int, height: int, x: int = None, y: int = None):
+        """
+        Save panel dimensions and position to database
+
+        Args:
+            panel_name: Unique identifier for the panel (e.g., 'floating_panel', 'global_search')
+            width: Panel width in pixels
+            height: Panel height in pixels
+            x: X position (optional)
+            y: Y position (optional)
+        """
+        try:
+            with self.transaction() as conn:
+                conn.execute("""
+                    INSERT INTO panel_settings (panel_name, width, height, pos_x, pos_y, updated_at)
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(panel_name)
+                    DO UPDATE SET
+                        width = excluded.width,
+                        height = excluded.height,
+                        pos_x = COALESCE(excluded.pos_x, pos_x),
+                        pos_y = COALESCE(excluded.pos_y, pos_y),
+                        updated_at = CURRENT_TIMESTAMP
+                """, (panel_name, width, height, x, y))
+
+            logger.info(f"Panel settings saved: {panel_name} ({width}x{height})")
+        except Exception as e:
+            logger.error(f"Error saving panel settings: {e}")
+
+    def get_panel_settings(self, panel_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get panel dimensions and position from database
+
+        Args:
+            panel_name: Unique identifier for the panel
+
+        Returns:
+            Dictionary with panel settings or None if not found
+            Format: {'width': int, 'height': int, 'pos_x': int, 'pos_y': int}
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT width, height, pos_x, pos_y, updated_at
+                FROM panel_settings
+                WHERE panel_name = ?
+            """, (panel_name,))
+
+            row = cursor.fetchone()
+
+            if row:
+                return {
+                    'width': row['width'],
+                    'height': row['height'],
+                    'pos_x': row['pos_x'],
+                    'pos_y': row['pos_y'],
+                    'updated_at': row['updated_at']
+                }
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting panel settings: {e}")
+            return None
+
+    def reset_panel_settings(self, panel_name: str):
+        """
+        Reset panel settings to defaults by removing from database
+
+        Args:
+            panel_name: Unique identifier for the panel
+        """
+        try:
+            with self.transaction() as conn:
+                conn.execute("DELETE FROM panel_settings WHERE panel_name = ?", (panel_name,))
+
+            logger.info(f"Panel settings reset: {panel_name}")
+        except Exception as e:
+            logger.error(f"Error resetting panel settings: {e}")
 
     # ==================== Context Manager ====================
 

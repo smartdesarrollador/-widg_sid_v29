@@ -17,6 +17,8 @@ from views.advanced_filters_window import AdvancedFiltersWindow
 from core.search_engine import SearchEngine
 from core.advanced_filter_engine import AdvancedFilterEngine
 from core.pinned_panels_manager import PinnedPanelsManager
+from styles.panel_styles import PanelStyles
+from utils.panel_resizer import PanelResizer
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -77,22 +79,22 @@ class GlobalSearchPanel(QWidget):
         if self.db_manager:
             self.panels_manager = PinnedPanelsManager(self.db_manager)
 
-        # Get panel width from config
+        # Get panel width from config (or use new default)
         if config_manager:
-            self.panel_width = config_manager.get_setting('panel_width', 500)
+            self.panel_width = config_manager.get_setting('panel_width', PanelStyles.PANEL_WIDTH_DEFAULT)
         else:
-            self.panel_width = 500
+            self.panel_width = PanelStyles.PANEL_WIDTH_DEFAULT
 
-        # Resize handling
-        self.resizing = False
-        self.resize_start_x = 0
-        self.resize_start_width = 0
-        self.resize_edge_width = 15  # Width of the resize edge in pixels (increased)
+        # Panel resizer (will be initialized in init_ui)
+        self.panel_resizer = None
+
+        # Flag para animación de entrada (primera vez)
+        self._first_show = True
 
         self.init_ui()
 
     def init_ui(self):
-        """Initialize the floating panel UI"""
+        """Initialize the floating panel UI with new optimized design"""
         # Window properties
         self.setWindowTitle("Widget Sidebar - Búsqueda Global")
         self.setWindowFlags(
@@ -101,40 +103,37 @@ class GlobalSearchPanel(QWidget):
             Qt.WindowType.FramelessWindowHint
         )
 
-        # Calculate window height: 80% of screen height (same as sidebar)
-        from PyQt6.QtWidgets import QApplication
-        screen = QApplication.primaryScreen()
-        if screen:
-            screen_height = screen.availableGeometry().height()
-            window_height = int(screen_height * 0.8)
-        else:
-            window_height = 600  # Fallback
+        # Set window size with new optimized dimensions
+        self.setMinimumWidth(PanelStyles.PANEL_WIDTH_MIN)
+        self.setMaximumWidth(PanelStyles.PANEL_WIDTH_MAX)
+        self.setMinimumHeight(PanelStyles.PANEL_HEIGHT_MIN)
+        self.setMaximumHeight(PanelStyles.PANEL_HEIGHT_MAX)
+        self.resize(self.panel_width, PanelStyles.PANEL_HEIGHT_DEFAULT)
 
-        # Set window size (allow width to be resized)
-        self.setMinimumWidth(300)  # Minimum width
-        self.setMaximumWidth(1000)  # Maximum width
-        self.setMinimumHeight(400)
-        self.resize(self.panel_width, window_height)
-
-        # Enable mouse tracking for resize cursor
+        # Enable mouse tracking for resizer
         self.setMouseTracking(True)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
         # Set window opacity
-        self.setWindowOpacity(0.95)
+        self.setWindowOpacity(0.98)
 
         # No cerrar la aplicación al cerrar esta ventana
         self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
 
-        # Set background with different color for global search
-        self.setStyleSheet("""
-            GlobalSearchPanel {
-                background-color: #252525;
-                border: 2px solid #f093fb;
-                border-left: 5px solid #f093fb;
-                border-radius: 8px;
-            }
-        """)
+        # Apply new panel styles
+        self.setStyleSheet(PanelStyles.get_panel_style())
+
+        # Initialize panel resizer
+        self.panel_resizer = PanelResizer(
+            widget=self,
+            min_width=PanelStyles.PANEL_WIDTH_MIN,
+            max_width=PanelStyles.PANEL_WIDTH_MAX,
+            min_height=PanelStyles.PANEL_HEIGHT_MIN,
+            max_height=PanelStyles.PANEL_HEIGHT_MAX,
+            handle_size=PanelStyles.RESIZE_HANDLE_SIZE
+        )
+        # Connect resize signal
+        self.panel_resizer.resized.connect(self.on_panel_resized)
 
         # Main layout
         main_layout = QVBoxLayout(self)
@@ -143,28 +142,22 @@ class GlobalSearchPanel(QWidget):
 
         # Header with title and close button
         self.header_widget = QWidget()
-        self.header_widget.setStyleSheet("""
-            QWidget {
-                background-color: #252525;
-                border-radius: 6px 6px 0 0;
-            }
-        """)
+        self.header_widget.setStyleSheet(PanelStyles.get_header_style())
+        self.header_widget.setFixedHeight(PanelStyles.HEADER_HEIGHT)
         self.header_layout = QHBoxLayout(self.header_widget)
-        self.header_layout.setContentsMargins(15, 10, 10, 10)
-        self.header_layout.setSpacing(5)
+        self.header_layout.setContentsMargins(
+            PanelStyles.HEADER_PADDING_H,
+            PanelStyles.HEADER_PADDING_V,
+            PanelStyles.HEADER_PADDING_H,
+            PanelStyles.HEADER_PADDING_V
+        )
+        self.header_layout.setSpacing(6)
 
         # Title
-        self.header_label = QLabel("🌐 Búsqueda Global")
-        self.header_label.setStyleSheet("""
-            QLabel {
-                background-color: transparent;
-                color: #ffffff;
-                font-size: 12pt;
-                font-weight: bold;
-            }
-        """)
-        self.header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.header_layout.addWidget(self.header_label)
+        self.header_label = QLabel("🔍 Búsqueda Global")
+        self.header_label.setStyleSheet(PanelStyles.get_header_title_style())
+        self.header_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.header_layout.addWidget(self.header_label, 1)  # Stretch factor 1
 
         # Filter badge (shows number of active filters)
         self.filter_badge = QLabel()
@@ -183,83 +176,39 @@ class GlobalSearchPanel(QWidget):
         self.header_layout.addWidget(self.filter_badge)
 
         # Pin button
-        self.pin_button = QPushButton()
-        self.pin_button.setFixedSize(32, 32)
+        self.pin_button = QPushButton("📌")
+        self.pin_button.setFixedSize(PanelStyles.CLOSE_BUTTON_SIZE, PanelStyles.CLOSE_BUTTON_SIZE)
         self.pin_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.pin_button.setStyleSheet(PanelStyles.get_close_button_style())
+        self.pin_button.setToolTip("Anclar panel")
         self.pin_button.clicked.connect(self.toggle_pin)
-        self.update_pin_button_style()
         self.header_layout.addWidget(self.pin_button)
 
         # Minimize button (solo visible cuando está anclado)
-        self.minimize_button = QPushButton("➖")
-        self.minimize_button.setFixedSize(32, 32)
+        self.minimize_button = QPushButton("−")
+        self.minimize_button.setFixedSize(PanelStyles.CLOSE_BUTTON_SIZE, PanelStyles.CLOSE_BUTTON_SIZE)
         self.minimize_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.minimize_button.setStyleSheet(PanelStyles.get_close_button_style())
         self.minimize_button.setToolTip("Minimizar panel")
         self.minimize_button.clicked.connect(self.toggle_minimize)
         self.minimize_button.setVisible(False)  # Solo visible cuando está anclado
-        self.minimize_button.setStyleSheet("""
-            QPushButton {
-                background-color: #3d3d3d;
-                color: white;
-                border: none;
-                border-radius: 16px;
-                font-size: 12pt;
-            }
-            QPushButton:hover {
-                background-color: #4d4d4d;
-            }
-            QPushButton:pressed {
-                background-color: #2d2d2d;
-            }
-        """)
         self.header_layout.addWidget(self.minimize_button)
 
         # Config button (solo visible cuando está anclado)
-        self.config_button = QPushButton("⚙️")
-        self.config_button.setFixedSize(32, 32)
+        self.config_button = QPushButton("⚙")
+        self.config_button.setFixedSize(PanelStyles.CLOSE_BUTTON_SIZE, PanelStyles.CLOSE_BUTTON_SIZE)
         self.config_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.config_button.setStyleSheet(PanelStyles.get_close_button_style())
         self.config_button.setToolTip("Configurar panel")
         self.config_button.clicked.connect(self.show_panel_configuration)
         self.config_button.setVisible(False)  # Solo visible cuando está anclado
-        self.config_button.setStyleSheet("""
-            QPushButton {
-                background-color: #3d3d3d;
-                color: white;
-                border: none;
-                border-radius: 16px;
-                font-size: 12pt;
-            }
-            QPushButton:hover {
-                background-color: #4d4d4d;
-            }
-            QPushButton:pressed {
-                background-color: #2d2d2d;
-            }
-        """)
         self.header_layout.addWidget(self.config_button)
 
         # Close button
         close_button = QPushButton("✕")
-        close_button.setFixedSize(24, 24)
+        close_button.setFixedSize(PanelStyles.CLOSE_BUTTON_SIZE, PanelStyles.CLOSE_BUTTON_SIZE)
         close_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        close_button.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: #ffffff;
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 12px;
-                font-size: 12pt;
-                font-weight: bold;
-                padding: 0px;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.2);
-                border: 1px solid rgba(255, 255, 255, 0.4);
-            }
-            QPushButton:pressed {
-                background-color: rgba(255, 255, 255, 0.3);
-            }
-        """)
+        close_button.setStyleSheet(PanelStyles.get_close_button_style())
         close_button.clicked.connect(self.hide)
         self.header_layout.addWidget(close_button)
 
@@ -427,52 +376,27 @@ class GlobalSearchPanel(QWidget):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background-color: #252525;
-                border-radius: 0 0 6px 6px;
-            }
-            QScrollBar:vertical {
-                background-color: #2d2d2d;
-                width: 10px;
-                border: none;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #555555;
-                border-radius: 5px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #666666;
-            }
-            QScrollBar:horizontal {
-                background-color: #2d2d2d;
-                height: 10px;
-                border: none;
-            }
-            QScrollBar::handle:horizontal {
-                background-color: #555555;
-                border-radius: 5px;
-                min-width: 20px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background-color: #666666;
-            }
+        self.scroll_area.setStyleSheet(f"""
+            {PanelStyles.get_scroll_area_style()}
+            {PanelStyles.get_scrollbar_style()}
         """)
 
         # Container for items
         self.items_container = QWidget()
-
-        # Configurar política de tamaño para permitir expansión horizontal
         self.items_container.setSizePolicy(
-            QSizePolicy.Policy.MinimumExpanding,  # Horizontal: puede expandirse
-            QSizePolicy.Policy.Preferred          # Vertical: tamaño preferido
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred
         )
+        self.items_container.setStyleSheet(PanelStyles.get_body_style())
 
         self.items_layout = QVBoxLayout(self.items_container)
-        self.items_layout.setContentsMargins(0, 0, 0, 0)
-        self.items_layout.setSpacing(0)
+        self.items_layout.setContentsMargins(
+            PanelStyles.BODY_PADDING,
+            PanelStyles.BODY_PADDING,
+            PanelStyles.BODY_PADDING,
+            PanelStyles.BODY_PADDING
+        )
+        self.items_layout.setSpacing(PanelStyles.ITEM_SPACING)
         self.items_layout.addStretch()
 
         self.scroll_area.setWidget(self.items_container)
@@ -1548,71 +1472,6 @@ class GlobalSearchPanel(QWidget):
         self.move(panel_x, panel_y)
         logger.debug(f"Positioned global search panel at ({panel_x}, {panel_y})")
 
-    def is_on_left_edge(self, pos):
-        """Check if mouse position is on the left edge for resizing"""
-        return pos.x() <= self.resize_edge_width
-
-    def event(self, event):
-        """Override event to handle hover for cursor changes"""
-        if event.type() == QEvent.Type.HoverMove:
-            pos = event.position().toPoint()
-            if self.is_on_left_edge(pos):
-                self.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
-            else:
-                self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
-        return super().event(event)
-
-    def mousePressEvent(self, event):
-        """Handle mouse press for dragging or resizing"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            if self.is_on_left_edge(event.pos()):
-                # Start resizing
-                self.resizing = True
-                self.resize_start_x = event.globalPosition().toPoint().x()
-                self.resize_start_width = self.width()
-                event.accept()
-            else:
-                # Start dragging
-                self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-                event.accept()
-
-    def mouseMoveEvent(self, event):
-        """Handle mouse move for dragging or resizing"""
-        if event.buttons() == Qt.MouseButton.LeftButton:
-            if self.resizing:
-                # Calculate new width
-                current_x = event.globalPosition().toPoint().x()
-                delta_x = current_x - self.resize_start_x
-                new_width = self.resize_start_width - delta_x  # Subtract because we're dragging from left edge
-
-                # Apply constraints
-                new_width = max(self.minimumWidth(), min(new_width, self.maximumWidth()))
-
-                # Resize and reposition
-                old_width = self.width()
-                old_x = self.x()
-                self.resize(new_width, self.height())
-
-                # Adjust position to keep right edge fixed
-                width_diff = self.width() - old_width
-                self.move(old_x - width_diff, self.y())
-
-                event.accept()
-            else:
-                # Dragging
-                self.move(event.globalPosition().toPoint() - self.drag_position)
-                event.accept()
-
-    def mouseReleaseEvent(self, event):
-        """Handle mouse release to end resizing"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            if self.resizing:
-                self.resizing = False
-                # Save new width to config
-                if self.config_manager:
-                    self.config_manager.set_setting('panel_width', self.width())
-                event.accept()
-
     def toggle_filters_window(self):
         """Abrir/cerrar la ventana de filtros avanzados"""
         if self.filters_window.isVisible():
@@ -1873,11 +1732,83 @@ class GlobalSearchPanel(QWidget):
         if self.is_pinned and not self.is_minimized:
             self.update_timer.start(self.update_delay_ms)
 
+    def on_panel_resized(self, width: int, height: int):
+        """Handle panel resize completion from PanelResizer"""
+        logger.info(f"Global Search Panel resized to: {width}x{height}")
+
+        # Save new dimensions to config
+        if self.config_manager:
+            self.config_manager.set_setting('panel_width', width)
+            self.config_manager.set_setting('panel_height', height)
+
+            # Save to panel_settings table if db_manager is available
+            if self.db_manager:
+                self.db_manager.save_panel_settings(
+                    panel_name='global_search_panel',
+                    width=width,
+                    height=height,
+                    x=self.x(),
+                    y=self.y()
+                )
+
+        # Trigger auto-save for pinned panels
+        if self.is_pinned and self.panel_id and self.panels_manager:
+            self.update_timer.start(self.update_delay_ms)
+
+    def smooth_scroll_to(self, value: int, duration: int = 300):
+        """
+        Anima el scroll vertical hacia un valor específico
+
+        Args:
+            value: Valor objetivo del scroll (0 = arriba, max = abajo)
+            duration: Duración de la animación en milisegundos (default: 300ms)
+        """
+        scroll_bar = self.scroll_area.verticalScrollBar()
+        animation = PanelStyles.create_smooth_scroll_animation(scroll_bar, value, duration)
+        animation.start()
+        # Guardar referencia para que no se destruya
+        self._scroll_animation = animation
+
+    def smooth_scroll_to_top(self, duration: int = 300):
+        """Anima el scroll hacia arriba"""
+        self.smooth_scroll_to(0, duration)
+
+    def smooth_scroll_to_bottom(self, duration: int = 300):
+        """Anima el scroll hacia abajo"""
+        scroll_bar = self.scroll_area.verticalScrollBar()
+        self.smooth_scroll_to(scroll_bar.maximum(), duration)
+
+    def showEvent(self, event):
+        """Handler al mostrar ventana - aplicar animación de entrada"""
+        super().showEvent(event)
+
+        if self._first_show:
+            self._first_show = False
+            # Aplicar animación de fade-in con las nuevas animaciones de PanelStyles
+            animation = PanelStyles.create_fade_in_animation(self, duration=200)
+            animation.start()
+            # Guardar referencia para que no se destruya
+            self._show_animation = animation
+
     def closeEvent(self, event):
         """Handle window close event"""
+        # Ignorar el evento inicialmente para aplicar animación
+        event.ignore()
+
         # Cerrar también la ventana de filtros si está abierta
         if self.filters_window.isVisible():
             self.filters_window.close()
 
-        self.window_closed.emit()
-        event.accept()
+        # Crear y ejecutar animación de fade-out
+        animation = PanelStyles.create_fade_out_animation(self, duration=150)
+
+        # Cuando termine la animación, cerrar la ventana realmente
+        def on_animation_finished():
+            self.window_closed.emit()
+            super(GlobalSearchPanel, self).close()  # Cerrar sin disparar closeEvent nuevamente
+
+        animation.finished.connect(on_animation_finished)
+        animation.start()
+
+        # Guardar referencia para que no se destruya
+        self._close_animation = animation

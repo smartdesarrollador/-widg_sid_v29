@@ -17,6 +17,8 @@ from views.widgets.item_widget import ItemButton
 from views.widgets.list_widget import ListWidget
 from views.widgets.search_bar import SearchBar
 from styles.futuristic_theme import get_theme
+from styles.panel_styles import PanelStyles
+from utils.panel_resizer import PanelResizer
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -56,35 +58,34 @@ class ProcessFloatingPanel(QWidget):
         # Theme
         self.theme = get_theme()
 
-        # Get panel width from config
+        # Get panel width from config (or use new default)
         if config_manager:
-            self.panel_width = config_manager.get_setting('panel_width', 500)
+            self.panel_width = config_manager.get_setting('panel_width', PanelStyles.PANEL_WIDTH_DEFAULT)
         else:
-            self.panel_width = 500
+            self.panel_width = PanelStyles.PANEL_WIDTH_DEFAULT
 
-        # Resize handling
-        self.resizing = False
-        self.resize_direction = None  # 'right', 'bottom', 'bottom-right', 'left', 'top', etc.
-        self.resize_start_pos = QPoint()
-        self.resize_start_geometry = None
-        self.resize_edge_width = 15  # Width of the resize edge in pixels
+        # Panel resizer (will be initialized in init_ui)
+        self.panel_resizer = None
 
         # Drag handling
         self.drag_position = QPoint()
 
         # Panel persistence attributes
-        self.panel_id = None  # ID del panel en la base de datos (None si no está guardado)
+        self.panel_id = None
+
+        # Flag para animación de entrada (primera vez)
+        self._first_show = True
 
         # AUTO-UPDATE: Timer for debounced panel state updates
         self.update_timer = QTimer(self)
         self.update_timer.setSingleShot(True)
         self.update_timer.timeout.connect(self._save_panel_state_to_db)
-        self.update_delay_ms = 1000  # 1 second delay after move/resize
+        self.update_delay_ms = 1000
 
         self.init_ui()
 
     def init_ui(self):
-        """Initialize the floating panel UI"""
+        """Initialize the floating panel UI with new optimized design"""
         # Window properties
         self.setWindowTitle("Proceso - Items y Listas")
         self.setWindowFlags(
@@ -93,37 +94,34 @@ class ProcessFloatingPanel(QWidget):
             Qt.WindowType.FramelessWindowHint
         )
 
-        # Calculate window height: 80% of screen height (same as other panels)
-        from PyQt6.QtWidgets import QApplication
-        screen = QApplication.primaryScreen()
-        if screen:
-            screen_height = screen.availableGeometry().height()
-            window_height = int(screen_height * 0.8)
-        else:
-            window_height = 600
+        # Set window size with new optimized dimensions
+        self.setMinimumWidth(PanelStyles.PANEL_WIDTH_MIN)
+        self.setMaximumWidth(PanelStyles.PANEL_WIDTH_MAX)
+        self.setMinimumHeight(PanelStyles.PANEL_HEIGHT_MIN)
+        self.setMaximumHeight(PanelStyles.PANEL_HEIGHT_MAX)
+        self.resize(self.panel_width, PanelStyles.PANEL_HEIGHT_DEFAULT)
 
-        # Set window size
-        self.setMinimumWidth(300)
-        self.setMaximumWidth(1000)
-        self.setMinimumHeight(400)
-        self.resize(self.panel_width, window_height)
-
-        # Enable mouse tracking for resize cursor
+        # Enable mouse tracking for resizer
         self.setMouseTracking(True)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
         # Set window opacity
-        self.setWindowOpacity(0.95)
+        self.setWindowOpacity(0.98)
 
-        # Set background with border
-        self.setStyleSheet(f"""
-            ProcessFloatingPanel {{
-                background-color: {self.theme.get_color('background_deep')};
-                border: 2px solid #ff8800;
-                border-right: 5px solid #ff8800;
-                border-radius: 12px;
-            }}
-        """)
+        # Apply new panel styles
+        self.setStyleSheet(PanelStyles.get_panel_style())
+
+        # Initialize panel resizer
+        self.panel_resizer = PanelResizer(
+            widget=self,
+            min_width=PanelStyles.PANEL_WIDTH_MIN,
+            max_width=PanelStyles.PANEL_WIDTH_MAX,
+            min_height=PanelStyles.PANEL_HEIGHT_MIN,
+            max_height=PanelStyles.PANEL_HEIGHT_MAX,
+            handle_size=PanelStyles.RESIZE_HANDLE_SIZE
+        )
+        # Connect resize signal
+        self.panel_resizer.resized.connect(self.on_panel_resized)
 
         # Main layout
         main_layout = QVBoxLayout(self)
@@ -138,216 +136,104 @@ class ProcessFloatingPanel(QWidget):
         self.action_bar = self.create_action_bar()
         main_layout.addWidget(self.action_bar)
 
-        # Content area (scrollable)
+        # Content area (scrollable) with new optimized spacing
         self.content_widget = QWidget()
-        self.content_widget.setStyleSheet("""
-            QWidget {
-                background-color: #1e1e1e;
-            }
-        """)
+        self.content_widget.setStyleSheet(PanelStyles.get_body_style())
         self.content_layout = QVBoxLayout(self.content_widget)
-        self.content_layout.setContentsMargins(10, 10, 10, 10)
-        self.content_layout.setSpacing(10)
+        self.content_layout.setContentsMargins(
+            PanelStyles.BODY_PADDING,
+            PanelStyles.BODY_PADDING,
+            PanelStyles.BODY_PADDING,
+            PanelStyles.BODY_PADDING
+        )
+        self.content_layout.setSpacing(PanelStyles.ITEM_SPACING)
         self.content_layout.addStretch()
 
-        # Scroll area
+        # Scroll area with new optimized scrollbars
         scroll_area = QScrollArea()
         scroll_area.setWidget(self.content_widget)
         scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background-color: transparent;
-            }
-            QScrollBar:vertical {
-                background-color: #2d2d2d;
-                width: 12px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #00ff88;
-                border-radius: 6px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #00ffaa;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QScrollBar:horizontal {
-                background-color: #2d2d2d;
-                height: 12px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:horizontal {
-                background-color: #ff8800;
-                border-radius: 6px;
-                min-width: 30px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background-color: #ffaa00;
-            }
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                width: 0px;
-            }
+        scroll_area.setStyleSheet(f"""
+            {PanelStyles.get_scroll_area_style()}
+            {PanelStyles.get_scrollbar_style()}
         """)
         main_layout.addWidget(scroll_area)
 
     def create_header(self):
-        """Create header with title and control buttons"""
+        """Create header with title and control buttons - New optimized design"""
         header = QWidget()
-        header.setFixedHeight(60)
-        header.setStyleSheet("""
-            QWidget {
-                background-color: #007acc;
-                border-top-left-radius: 10px;
-                border-top-right-radius: 10px;
-            }
-        """)
+        header.setStyleSheet(PanelStyles.get_header_style())
+        header.setFixedHeight(PanelStyles.HEADER_HEIGHT)
 
         layout = QHBoxLayout(header)
-        layout.setContentsMargins(10, 5, 10, 5)
-        layout.setSpacing(8)
+        layout.setContentsMargins(
+            PanelStyles.HEADER_PADDING_H,
+            PanelStyles.HEADER_PADDING_V,
+            PanelStyles.HEADER_PADDING_H,
+            PanelStyles.HEADER_PADDING_V
+        )
+        layout.setSpacing(6)
 
-        # "PROCESOS" label
-        title_label = QLabel("PROCESOS")
-        title_label.setStyleSheet("""
-            QLabel {
-                color: #ffffff;
-                font-size: 12pt;
-                font-weight: bold;
-                background-color: transparent;
-            }
-        """)
+        # Title with process icon
+        title_label = QLabel("⚙️ PROCESO")
+        title_label.setStyleSheet(PanelStyles.get_header_title_style())
+        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(title_label)
 
-        # Process name label (with orange background)
+        # Process name badge (compact)
         self.process_name_label = QLabel()
-        self.process_name_label.setStyleSheet("""
-            QLabel {
-                background-color: #ff8800;
-                color: #000000;
-                font-size: 11pt;
-                font-weight: bold;
-                padding: 8px 15px;
-                border-radius: 15px;
-            }
-        """)
+        self.process_name_label.setStyleSheet(PanelStyles.get_badge_style('default'))
         self.process_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.process_name_label)
 
         layout.addStretch()
 
-        # "Copiar Todos" button (checkable)
-        self.copy_all_button = QPushButton("📋 Copiar Todos")
+        # "Copiar Todos" button (compact, no text)
+        self.copy_all_button = QPushButton("📋")
         self.copy_all_button.setCheckable(True)
+        self.copy_all_button.setFixedSize(PanelStyles.CLOSE_BUTTON_SIZE, PanelStyles.CLOSE_BUTTON_SIZE)
         self.copy_all_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.copy_all_button.setStyleSheet("""
-            QPushButton {
-                background-color: #2d2d2d;
-                color: #ffffff;
-                border: 1px solid #3d3d3d;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 9pt;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #00ff88;
-                color: #000000;
-                border-color: #00ff88;
-            }
-            QPushButton:checked {
-                background-color: #00ff88;
-                color: #000000;
-            }
-        """)
+        self.copy_all_button.setStyleSheet(PanelStyles.get_close_button_style())
+        self.copy_all_button.setToolTip("Copiar todos los items")
         self.copy_all_button.clicked.connect(self.on_copy_all_clicked)
         layout.addWidget(self.copy_all_button)
 
         # Edit/Config button
-        edit_button = QPushButton("⚙️")
-        edit_button.setFixedSize(30, 30)
+        edit_button = QPushButton("⚙")
+        edit_button.setFixedSize(PanelStyles.CLOSE_BUTTON_SIZE, PanelStyles.CLOSE_BUTTON_SIZE)
         edit_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        edit_button.setStyleSheet(PanelStyles.get_close_button_style())
         edit_button.setToolTip("Editar proceso")
-        edit_button.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #ffffff;
-                border: none;
-                font-size: 14pt;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-                border-radius: 4px;
-            }
-        """)
         edit_button.clicked.connect(self.on_edit_process_clicked)
         layout.addWidget(edit_button)
 
         # Pin button
         self.pin_button = QPushButton("📌")
-        self.pin_button.setFixedSize(30, 30)
+        self.pin_button.setFixedSize(PanelStyles.CLOSE_BUTTON_SIZE, PanelStyles.CLOSE_BUTTON_SIZE)
         self.pin_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.pin_button.setStyleSheet(PanelStyles.get_close_button_style())
         self.pin_button.setToolTip("Anclar panel")
-        self.pin_button.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #ffffff;
-                border: none;
-                font-size: 14pt;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-                border-radius: 4px;
-            }
-        """)
         self.pin_button.clicked.connect(self.on_pin_clicked)
         layout.addWidget(self.pin_button)
 
         # Minimize button (only visible when pinned)
         self.minimize_button = QPushButton("−")
-        self.minimize_button.setFixedSize(30, 30)
+        self.minimize_button.setFixedSize(PanelStyles.CLOSE_BUTTON_SIZE, PanelStyles.CLOSE_BUTTON_SIZE)
         self.minimize_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.minimize_button.setStyleSheet(PanelStyles.get_close_button_style())
         self.minimize_button.setToolTip("Minimizar")
-        self.minimize_button.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #ffffff;
-                border: none;
-                font-size: 14pt;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-                border-radius: 4px;
-            }
-        """)
         self.minimize_button.clicked.connect(self.on_minimize_clicked)
         self.minimize_button.setVisible(False)
         layout.addWidget(self.minimize_button)
 
         # Close button
         close_button = QPushButton("✕")
-        close_button.setFixedSize(30, 30)
+        close_button.setFixedSize(PanelStyles.CLOSE_BUTTON_SIZE, PanelStyles.CLOSE_BUTTON_SIZE)
         close_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        close_button.setStyleSheet(PanelStyles.get_close_button_style())
         close_button.setToolTip("Cerrar")
-        close_button.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #ffffff;
-                border: none;
-                font-size: 14pt;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #e4475b;
-                border-radius: 4px;
-            }
-        """)
         close_button.clicked.connect(self.close)
         layout.addWidget(close_button)
 
@@ -799,11 +685,38 @@ class ProcessFloatingPanel(QWidget):
         except Exception as e:
             logger.error(f"Error reloading process after edit: {e}", exc_info=True)
 
+    def showEvent(self, event):
+        """Handler al mostrar ventana - aplicar animación de entrada"""
+        super().showEvent(event)
+
+        if self._first_show:
+            self._first_show = False
+            # Aplicar animación de fade-in con las nuevas animaciones de PanelStyles
+            animation = PanelStyles.create_fade_in_animation(self, duration=200)
+            animation.start()
+            # Guardar referencia para que no se destruya
+            self._show_animation = animation
+
     def closeEvent(self, event):
         """Handle window close event"""
+        # Ignorar el evento inicialmente para aplicar animación
+        event.ignore()
+
         logger.info("Process panel closing")
-        self.window_closed.emit()
-        event.accept()
+
+        # Crear y ejecutar animación de fade-out
+        animation = PanelStyles.create_fade_out_animation(self, duration=150)
+
+        # Cuando termine la animación, cerrar la ventana realmente
+        def on_animation_finished():
+            self.window_closed.emit()
+            super(ProcessFloatingPanel, self).close()  # Cerrar sin disparar closeEvent nuevamente
+
+        animation.finished.connect(on_animation_finished)
+        animation.start()
+
+        # Guardar referencia para que no se destruya
+        self._close_animation = animation
 
     # Search functionality
     def on_search_changed(self, query: str):
@@ -1054,156 +967,51 @@ class ProcessFloatingPanel(QWidget):
                 f"No se pudo abrir la ruta:\n{path}\n\nError: {str(e)}"
             )
 
-    # Mouse events for resize (all edges) and dragging
-    def get_resize_direction(self, pos):
+    def on_panel_resized(self, width: int, height: int):
+        """Handle panel resize completion from PanelResizer"""
+        logger.info(f"Process Panel resized to: {width}x{height}")
+
+        # Save new dimensions to config
+        if self.config_manager:
+            self.config_manager.set_setting('panel_width', width)
+            self.config_manager.set_setting('panel_height', height)
+
+            # Save to panel_settings table if db_manager is available
+            if hasattr(self.config_manager, 'db_manager') and self.config_manager.db_manager:
+                self.config_manager.db_manager.save_panel_settings(
+                    panel_name='process_floating_panel',
+                    width=width,
+                    height=height,
+                    x=self.x(),
+                    y=self.y()
+                )
+
+        # Trigger auto-save for pinned panels
+        if self.is_pinned and self.panel_id:
+            self.schedule_panel_update()
+
+    def smooth_scroll_to(self, value: int, duration: int = 300):
         """
-        Determine resize direction based on mouse position
+        Anima el scroll vertical hacia un valor específico
 
-        Returns:
-            str: 'right', 'left', 'top', 'bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right', or None
+        Args:
+            value: Valor objetivo del scroll (0 = arriba, max = abajo)
+            duration: Duración de la animación en milisegundos (default: 300ms)
         """
-        x = pos.x()
-        y = pos.y()
-        w = self.width()
-        h = self.height()
-        edge = self.resize_edge_width
+        scroll_bar = self.scroll_area.verticalScrollBar()
+        animation = PanelStyles.create_smooth_scroll_animation(scroll_bar, value, duration)
+        animation.start()
+        # Guardar referencia para que no se destruya
+        self._scroll_animation = animation
 
-        on_left = x <= edge
-        on_right = x >= w - edge
-        on_top = y <= edge
-        on_bottom = y >= h - edge
+    def smooth_scroll_to_top(self, duration: int = 300):
+        """Anima el scroll hacia arriba"""
+        self.smooth_scroll_to(0, duration)
 
-        # Corners have priority
-        if on_top and on_left:
-            return 'top-left'
-        elif on_top and on_right:
-            return 'top-right'
-        elif on_bottom and on_left:
-            return 'bottom-left'
-        elif on_bottom and on_right:
-            return 'bottom-right'
-        # Edges
-        elif on_left:
-            return 'left'
-        elif on_right:
-            return 'right'
-        elif on_top:
-            return 'top'
-        elif on_bottom:
-            return 'bottom'
-
-        return None
-
-    def get_cursor_for_direction(self, direction):
-        """Get appropriate cursor for resize direction"""
-        cursor_map = {
-            'right': Qt.CursorShape.SizeHorCursor,
-            'left': Qt.CursorShape.SizeHorCursor,
-            'top': Qt.CursorShape.SizeVerCursor,
-            'bottom': Qt.CursorShape.SizeVerCursor,
-            'top-left': Qt.CursorShape.SizeFDiagCursor,
-            'bottom-right': Qt.CursorShape.SizeFDiagCursor,
-            'top-right': Qt.CursorShape.SizeBDiagCursor,
-            'bottom-left': Qt.CursorShape.SizeBDiagCursor,
-        }
-        return cursor_map.get(direction, Qt.CursorShape.ArrowCursor)
-
-    def event(self, event):
-        """Override event to handle hover for cursor changes"""
-        if event.type() == QEvent.Type.HoverMove:
-            pos = event.position().toPoint()
-            direction = self.get_resize_direction(pos)
-            if direction:
-                cursor = self.get_cursor_for_direction(direction)
-                self.setCursor(QCursor(cursor))
-            else:
-                self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
-        return super().event(event)
-
-    def mousePressEvent(self, event):
-        """Handle mouse press for dragging or resizing"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            direction = self.get_resize_direction(event.pos())
-            if direction:
-                # Start resizing
-                self.resizing = True
-                self.resize_direction = direction
-                self.resize_start_pos = event.globalPosition().toPoint()
-                self.resize_start_geometry = self.geometry()
-                event.accept()
-            else:
-                # Start dragging
-                self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-                event.accept()
-
-    def mouseMoveEvent(self, event):
-        """Handle mouse move for dragging or resizing"""
-        if event.buttons() == Qt.MouseButton.LeftButton:
-            if self.resizing:
-                # Calculate delta from start position
-                current_pos = event.globalPosition().toPoint()
-                delta_x = current_pos.x() - self.resize_start_pos.x()
-                delta_y = current_pos.y() - self.resize_start_pos.y()
-
-                # Get original geometry
-                x = self.resize_start_geometry.x()
-                y = self.resize_start_geometry.y()
-                w = self.resize_start_geometry.width()
-                h = self.resize_start_geometry.height()
-
-                # Calculate new geometry based on resize direction
-                new_x = x
-                new_y = y
-                new_w = w
-                new_h = h
-
-                if 'right' in self.resize_direction:
-                    new_w = w + delta_x
-                if 'left' in self.resize_direction:
-                    new_w = w - delta_x
-                    new_x = x + delta_x
-                if 'bottom' in self.resize_direction:
-                    new_h = h + delta_y
-                if 'top' in self.resize_direction:
-                    new_h = h - delta_y
-                    new_y = y + delta_y
-
-                # Apply constraints
-                new_w = max(self.minimumWidth(), min(new_w, self.maximumWidth()))
-                new_h = max(self.minimumHeight(), min(new_h, self.maximumHeight()))
-
-                # Adjust position if size was constrained (for left/top edges)
-                if 'left' in self.resize_direction:
-                    new_x = x + (w - new_w)
-                if 'top' in self.resize_direction:
-                    new_y = y + (h - new_h)
-
-                # Apply new geometry
-                self.setGeometry(new_x, new_y, new_w, new_h)
-
-                event.accept()
-            else:
-                # Dragging
-                self.move(event.globalPosition().toPoint() - self.drag_position)
-                event.accept()
-
-    def mouseReleaseEvent(self, event):
-        """Handle mouse release to end resizing"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            if self.resizing:
-                self.resizing = False
-                self.resize_direction = None
-                self.resize_start_geometry = None
-                # Save new width to config
-                if self.config_manager:
-                    self.config_manager.set_setting('panel_width', self.width())
-                # Schedule panel update after resize
-                self.schedule_panel_update()
-                event.accept()
-            else:
-                # End of drag - schedule panel update
-                self.schedule_panel_update()
-                event.accept()
+    def smooth_scroll_to_bottom(self, duration: int = 300):
+        """Anima el scroll hacia abajo"""
+        scroll_bar = self.scroll_area.verticalScrollBar()
+        self.smooth_scroll_to(scroll_bar.maximum(), duration)
 
     def moveEvent(self, event):
         """Handle window move - schedule panel state update"""

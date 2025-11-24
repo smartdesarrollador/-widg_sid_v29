@@ -19,6 +19,7 @@ from core.file_manager import FileManager
 from core.config_manager import ConfigManager
 from views.command_output_dialog import CommandOutputDialog
 from views.dialogs.item_details_dialog import ItemDetailsDialog
+from styles.panel_styles import PanelStyles
 import time
 import logging
 
@@ -90,196 +91,146 @@ class ItemButton(QFrame):
             return path
 
     def init_ui(self):
-        """Initialize button UI"""
-        # Set frame properties
-        self.setMinimumHeight(50)
-        self.setMinimumWidth(300)  # Ancho mínimo para activar scroll horizontal si es necesario
-        # Remove maximum height to allow widget to grow with content
+        """Initialize button UI with new optimized design"""
+        # Set frame properties with new dimensions
+        self.setFixedHeight(PanelStyles.ITEM_HEIGHT)
+        self.setMinimumWidth(300)  # Keep min width for horizontal scroll
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setSizePolicy(
-            QSizePolicy.Policy.Expanding,  # Horizontal: expandir pero respetar mínimo
-            QSizePolicy.Policy.MinimumExpanding  # Vertical: expandir verticalmente
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed  # Fixed height instead of expanding
         )
 
-        # Set tooltip simple - solo mostrar el contenido del item
-        # La información detallada está disponible en el panel de detalles
+        # Apply new item style
+        self.setStyleSheet(PanelStyles.get_item_style())
+
+        # Set tooltip - show content preview
         if not self.item.is_sensitive and self.item.content:
-            # Para items no sensibles, mostrar preview del contenido
-            content_preview = self.item.content[:150]  # First 150 chars
-            if len(self.item.content) > 150:
+            content_preview = self.item.content[:100]  # Reduced to 100 chars
+            if len(self.item.content) > 100:
                 content_preview += "..."
-            self.setToolTip(content_preview)
+            # Include type and description in tooltip
+            tooltip_parts = []
+            if self.item.description:
+                tooltip_parts.append(f"{self.item.description}")
+            tooltip_parts.append(f"\n{content_preview}")
+            tooltip_parts.append(f"\nTipo: {self.item.type}")
+            self.setToolTip("\n".join(tooltip_parts))
         else:
-            # Para items sensibles, solo mostrar el label
             self.setToolTip(self.item.label)
 
-        # Main layout
+        # Main layout - optimized spacing
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(15, 8, 15, 8)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(
+            PanelStyles.ITEM_PADDING_H,
+            PanelStyles.ITEM_PADDING_V,
+            PanelStyles.ITEM_PADDING_H,
+            PanelStyles.ITEM_PADDING_V
+        )
+        main_layout.setSpacing(PanelStyles.ICON_SPACING)
 
-        # Color indicator (if item has color)
-        if hasattr(self.item, 'color') and self.item.color:
-            color_indicator = QLabel()
-            color_indicator.setFixedSize(6, 30)  # Barra vertical delgada
-            color_indicator.setStyleSheet(f"""
-                QLabel {{
-                    background-color: {self.item.color};
-                    border-radius: 2px;
-                }}
-            """)
-            color_indicator.setToolTip(f"Color: {self.item.color}")
-            main_layout.addWidget(color_indicator)
+        # ==== NEW OPTIMIZED HORIZONTAL LAYOUT ====
 
-        # Left side: Item info (label + badges + tags + stats)
-        left_layout = QVBoxLayout()
-        left_layout.setSpacing(5)
+        # 1. Type Icon (14px, with 4px spacing)
+        type_emoji = PanelStyles.get_icon_type_emoji(self.item.type)
+        type_color = PanelStyles.get_icon_type_color(self.item.type)
+        self.type_icon = QLabel(type_emoji)
+        self.type_icon.setFixedSize(PanelStyles.ICON_SIZE, PanelStyles.ICON_SIZE)
+        self.type_icon.setStyleSheet(f"""
+            QLabel {{
+                color: {type_color};
+                font-size: {PanelStyles.ICON_SIZE}px;
+                background: transparent;
+                border: none;
+                padding: 0px;
+            }}
+        """)
+        self.type_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.type_icon.setToolTip(f"Tipo: {self.item.type}")
+        main_layout.addWidget(self.type_icon)
 
-        # Top row: Label + Badge
-        label_row = QHBoxLayout()
-        label_row.setSpacing(8)
-
-        # Item label (ofuscar si es sensible y no revelado)
+        # 2. Item Label (expandable, elided if too long)
         label_text = self.get_display_label()
         self.label_widget = QLabel(label_text)
-        label_font = QFont()
-        label_font.setPointSize(10)
-        self.label_widget.setFont(label_font)
-        # Enable word wrap to allow multiple lines
-        self.label_widget.setWordWrap(True)
+        self.label_widget.setStyleSheet(PanelStyles.get_item_label_style())
+        # Enable text eliding for long labels
         self.label_widget.setSizePolicy(
-            self.label_widget.sizePolicy().Policy.Expanding,
-            self.label_widget.sizePolicy().Policy.Minimum
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed
         )
-        label_row.addWidget(self.label_widget)
+        self.label_widget.setWordWrap(False)  # No wrap, use eliding
+        self.label_widget.setTextFormat(Qt.TextFormat.PlainText)
+        main_layout.addWidget(self.label_widget, 1)  # Stretch factor 1
+
+        # 3. Badges (compact, inline) - Use new PanelStyles
+        # Favorite badge
+        if hasattr(self.item, 'is_favorite') and self.item.is_favorite:
+            fav_badge = QLabel("⭐")
+            fav_badge.setStyleSheet(PanelStyles.get_badge_style('favorite'))
+            fav_badge.setToolTip("Favorito")
+            main_layout.addWidget(fav_badge)
+
+        # Popular badge (if use_count > 50)
+        if hasattr(self.item, 'use_count') and self.item.use_count and self.item.use_count > 50:
+            pop_badge = QLabel("🔥")
+            pop_badge.setStyleSheet(PanelStyles.get_badge_style('popular'))
+            pop_badge.setToolTip(f"Popular ({self.item.use_count} usos)")
+            main_layout.addWidget(pop_badge)
+
+        # New badge (if use_count == 0)
+        if hasattr(self.item, 'use_count') and self.item.use_count == 0:
+            new_badge = QLabel("🆕")
+            new_badge.setStyleSheet(PanelStyles.get_badge_style('new'))
+            new_badge.setToolTip("Nuevo")
+            main_layout.addWidget(new_badge)
 
         # Category badge (for global search)
         if self.show_category and hasattr(self.item, 'category_name') and self.item.category_name:
             category_badge = QLabel(f"📁 {self.item.category_name}")
-            category_badge.setStyleSheet("""
-                QLabel {
-                    background-color: #3d3d3d;
-                    color: #f093fb;
-                    border-radius: 3px;
-                    padding: 2px 8px;
-                    font-size: 8pt;
-                    font-weight: bold;
-                }
-            """)
-            label_row.addWidget(category_badge)
-
-        # Badge (Popular / Nuevo / Archivo Guardado)
-        badge = self.get_badge()
-        if badge:
-            badge_label = QLabel(badge)
-            badge_label.setStyleSheet("""
-                QLabel {
-                    background-color: transparent;
-                    color: #cccccc;
-                    font-size: 14pt;
-                    padding: 0px;
-                }
-            """)
-            label_row.addWidget(badge_label)
+            category_badge.setStyleSheet(PanelStyles.get_badge_style('default'))
+            category_badge.setToolTip(f"Categoría: {self.item.category_name}")
+            main_layout.addWidget(category_badge)
 
         # File badge (for PATH items with saved files)
         if (self.item.type == ItemType.PATH and
             hasattr(self.item, 'file_hash') and self.item.file_hash):
             file_badge = QLabel("📦")
-            file_badge.setStyleSheet("""
-                QLabel {
-                    background-color: transparent;
-                    color: #4CAF50;
-                    font-size: 14pt;
-                    padding: 0px;
-                }
-            """)
+            file_badge.setStyleSheet(PanelStyles.get_badge_style('default'))
             file_badge.setToolTip("Archivo guardado en almacenamiento organizado")
-            label_row.addWidget(file_badge)
+            main_layout.addWidget(file_badge)
 
         # Table badge (for table items)
         if hasattr(self.item, 'is_table') and self.item.is_table:
             table_badge = QLabel("📊")
-            table_badge.setStyleSheet("""
-                QLabel {
-                    background-color: transparent;
-                    color: #f093fb;
-                    font-size: 14pt;
-                    padding: 0px;
-                }
-            """)
+            table_badge.setStyleSheet(PanelStyles.get_badge_style('default'))
             table_name = getattr(self.item, 'name_table', 'Tabla')
             table_badge.setToolTip(f"Item de tabla: {table_name}")
-            label_row.addWidget(table_badge)
+            main_layout.addWidget(table_badge)
 
-        label_row.addStretch()
-        left_layout.addLayout(label_row)
+        # Spacer to push action buttons to the right
+        main_layout.addStretch()
 
-        # Tags container (only if item has tags)
-        if self.item.tags and len(self.item.tags) > 0:
-            tags_layout = QHBoxLayout()
-            tags_layout.setContentsMargins(0, 0, 0, 0)
-            tags_layout.setSpacing(5)
-
-            for tag in self.item.tags:
-                tag_label = QLabel(tag)
-                tag_label.setStyleSheet("""
-                    QLabel {
-                        background-color: #007acc;
-                        color: #ffffff;
-                        border-radius: 3px;
-                        padding: 2px 8px;
-                        font-size: 8pt;
-                    }
-                """)
-                tags_layout.addWidget(tag_label)
-
-            tags_layout.addStretch()
-            left_layout.addLayout(tags_layout)
-
-        # Usage stats (use_count + last_used) - DISABLED
-        # stats_text = self.get_usage_stats()
-        # if stats_text:
-        #     stats_label = QLabel(stats_text)
-        #     stats_label.setStyleSheet("""
-        #         QLabel {
-        #             color: #858585;
-        #             font-size: 8pt;
-        #             font-style: italic;
-        #             background-color: transparent;
-        #             border: none;
-        #         }
-        #     """)
-        #     stats_label.setWordWrap(True)
-        #     stats_label.setSizePolicy(
-        #         stats_label.sizePolicy().Policy.Expanding,
-        #         stats_label.sizePolicy().Policy.Minimum
-        #     )
-        #     left_layout.addWidget(stats_label)
-
-        main_layout.addLayout(left_layout, 1)
-
-        # Favorite button removed - now available in Item Details Dialog
-
-        # Right side: Action buttons based on item type (TYPE-SPECIFIC BUTTONS FIRST FOR VISIBILITY)
+        # ==== ACTION BUTTONS (compact 20x20px) ====
         if self.item.type == ItemType.CODE:
             # Execute command button (only for CODE items)
             self.execute_button = QPushButton("⚡")
-            self.execute_button.setFixedSize(35, 35)
-            self.execute_button.setStyleSheet("""
-                QPushButton {
-                    background-color: #cc7a00;
-                    color: #ffffff;
+            self.execute_button.setFixedSize(20, 20)
+            self.execute_button.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {PanelStyles.ACCENT_WARNING};
+                    color: #000000;
                     border: none;
-                    border-radius: 4px;
-                    font-size: 16pt;
-                }
-                QPushButton:hover {
-                    background-color: #ff9900;
-                }
-                QPushButton:pressed {
-                    background-color: #9e5e00;
-                }
+                    border-radius: 2px;
+                    font-size: 10pt;
+                    padding: 0px;
+                }}
+                QPushButton:hover {{
+                    background-color: {PanelStyles.ACCENT_HOVER};
+                    color: #ffffff;
+                }}
+                QPushButton:pressed {{
+                    background-color: {PanelStyles.ACCENT_SUBTLE};
+                }}
             """)
             self.execute_button.setCursor(Qt.CursorShape.PointingHandCursor)
             self.execute_button.setToolTip("Ejecutar comando")
