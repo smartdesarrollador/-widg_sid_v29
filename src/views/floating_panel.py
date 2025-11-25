@@ -1565,6 +1565,7 @@ class FloatingPanel(QWidget):
             # Hide content widgets
             self.filters_button_widget.setVisible(False)
             self.search_bar.setVisible(False)
+            self.display_options_widget.setVisible(False)  # Hide display options checkboxes
             self.scroll_area.setVisible(False)
 
             # Reduce header margins for compact look
@@ -1574,10 +1575,13 @@ class FloatingPanel(QWidget):
             self.setMinimumWidth(0)
             self.setMinimumHeight(0)
 
-            # Resize to compact size (height: 32px, width: ~180px)
-            minimized_height = 32
-            minimized_width = 180
+            # Resize to compact size (height: 50px for buttons visibility, width: ~250px)
+            minimized_height = 50  # Increased to 50px for better button visibility
+            minimized_width = 250  # Increased width to show all buttons
             self.resize(minimized_width, minimized_height)
+
+            # Set fixed size when minimized to prevent unwanted resizing
+            self.setFixedSize(minimized_width, minimized_height)
 
             # Move to bottom of screen (al ras de la barra de tareas)
             from PyQt6.QtWidgets import QApplication
@@ -1598,14 +1602,20 @@ class FloatingPanel(QWidget):
             # Restore content widgets
             self.filters_button_widget.setVisible(True)
             self.search_bar.setVisible(True)
+            self.display_options_widget.setVisible(True)  # Show display options checkboxes
             self.scroll_area.setVisible(True)
 
             # Restore header margins
             self.header_layout.setContentsMargins(15, 10, 10, 10)
 
+            # Remove fixed size constraint to allow resizing again
+            self.setFixedSize(16777215, 16777215)  # Maximum QWidget size (effectively removes fixed size)
+
             # CRITICAL: Restore size constraints
-            self.setMinimumWidth(300)
-            self.setMinimumHeight(400)
+            self.setMinimumWidth(PanelStyles.PANEL_WIDTH_MIN)
+            self.setMinimumHeight(PanelStyles.PANEL_HEIGHT_MIN)
+            self.setMaximumWidth(PanelStyles.PANEL_WIDTH_MAX)
+            self.setMaximumHeight(PanelStyles.PANEL_HEIGHT_MAX)
 
             # Restore original size
             if self.normal_height and self.normal_width:
