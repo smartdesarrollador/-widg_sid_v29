@@ -189,16 +189,6 @@ class CategoryFormDialog(QDialog):
 
         main_layout.addLayout(color_layout)
 
-        # Description field (optional)
-        desc_label = QLabel("Descripción (opcional):")
-        desc_label.setStyleSheet("font-weight: 500;")
-        main_layout.addWidget(desc_label)
-
-        self.description_input = QTextEdit()
-        self.description_input.setPlaceholderText("Descripción breve de la categoría...")
-        self.description_input.setMaximumHeight(80)
-        main_layout.addWidget(self.description_input)
-
         # Spacer
         main_layout.addStretch()
 
@@ -236,9 +226,6 @@ class CategoryFormDialog(QDialog):
             color = self.category.get('color')
             if color:
                 self.color_input.setText(color)
-
-            # Note: description not in current category model
-            # Will be empty for now
 
     def _update_icon_preview(self, text):
         """Update icon preview"""

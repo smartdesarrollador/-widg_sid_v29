@@ -4,7 +4,7 @@ FASE 3: Ventana de gestión con búsqueda, checkboxes y acciones
 """
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QLineEdit, QScrollArea, QSizePolicy, QMessageBox
+    QLineEdit, QScrollArea, QSizePolicy, QMessageBox, QDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint
 from PyQt6.QtGui import QFont, QCursor, QIcon
@@ -313,6 +313,56 @@ class CategoryManagerWindow(QWidget):
         self.clear_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         search_layout.addWidget(self.clear_btn)
 
+        # Select All button
+        self.select_all_btn = QPushButton("☑ Todos")
+        self.select_all_btn.setFixedHeight(35)
+        self.select_all_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                color: #cccccc;
+                border: 1px solid #3d3d3d;
+                border-radius: 6px;
+                padding: 0 15px;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+                border-color: #007acc;
+            }
+            QPushButton:pressed {
+                background-color: #1d1d1d;
+            }
+        """)
+        self.select_all_btn.clicked.connect(self._select_all_categories)
+        self.select_all_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.select_all_btn.setToolTip("Activar todas las categorías")
+        search_layout.addWidget(self.select_all_btn)
+
+        # Deselect All button
+        self.deselect_all_btn = QPushButton("☐ Ninguno")
+        self.deselect_all_btn.setFixedHeight(35)
+        self.deselect_all_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                color: #cccccc;
+                border: 1px solid #3d3d3d;
+                border-radius: 6px;
+                padding: 0 15px;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+                border-color: #007acc;
+            }
+            QPushButton:pressed {
+                background-color: #1d1d1d;
+            }
+        """)
+        self.deselect_all_btn.clicked.connect(self._deselect_all_categories)
+        self.deselect_all_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.deselect_all_btn.setToolTip("Desactivar todas las categorías")
+        search_layout.addWidget(self.deselect_all_btn)
+
         parent_layout.addWidget(search_container)
 
     def _create_category_list_area(self, parent_layout):
@@ -467,6 +517,74 @@ class CategoryManagerWindow(QWidget):
     def _clear_search(self):
         """Clear search input"""
         self.search_input.clear()
+
+    def _select_all_categories(self):
+        """Activate all categories"""
+        try:
+            logger.info("Selecting all categories")
+
+            # Get all category IDs
+            category_ids = [cat['id'] for cat in self.all_categories]
+
+            # Update database for all categories
+            for cat_id in category_ids:
+                self.db.set_category_active(cat_id, True)
+
+            # Reload categories to reflect changes
+            self.load_categories()
+
+            # Emit signal to update sidebar
+            self.categories_changed.emit()
+
+            logger.info(f"Activated {len(category_ids)} categories")
+
+        except Exception as e:
+            logger.error(f"Error selecting all categories: {e}", exc_info=True)
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"No se pudieron activar todas las categorías:\n{str(e)}"
+            )
+
+    def _deselect_all_categories(self):
+        """Deactivate all categories"""
+        try:
+            logger.info("Deselecting all categories")
+
+            # Confirm action
+            reply = QMessageBox.question(
+                self,
+                "Confirmar",
+                "¿Desactivar todas las categorías?\n\nEsto ocultará todas las categorías del sidebar.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.No:
+                return
+
+            # Get all category IDs
+            category_ids = [cat['id'] for cat in self.all_categories]
+
+            # Update database for all categories
+            for cat_id in category_ids:
+                self.db.set_category_active(cat_id, False)
+
+            # Reload categories to reflect changes
+            self.load_categories()
+
+            # Emit signal to update sidebar
+            self.categories_changed.emit()
+
+            logger.info(f"Deactivated {len(category_ids)} categories")
+
+        except Exception as e:
+            logger.error(f"Error deselecting all categories: {e}", exc_info=True)
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"No se pudieron desactivar todas las categorías:\n{str(e)}"
+            )
 
     def _perform_search(self):
         """Perform the search and update the list"""
