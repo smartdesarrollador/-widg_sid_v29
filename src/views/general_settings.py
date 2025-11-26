@@ -46,13 +46,6 @@ class GeneralSettings(QWidget):
 
     def init_ui(self):
         """Initialize the UI"""
-        # Set background color - use specific selector to not affect QGroupBox
-        self.setStyleSheet("""
-            GeneralSettings {
-                background-color: #2b2b2b;
-            }
-        """)
-
         # Main layout
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(20)
@@ -60,21 +53,6 @@ class GeneralSettings(QWidget):
 
         # Behavior group
         behavior_group = QGroupBox("Comportamiento")
-        behavior_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 11pt;
-                border: 1px solid #3d3d3d;
-                border-radius: 4px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
         behavior_layout = QVBoxLayout()
         behavior_layout.setSpacing(10)
 
@@ -101,7 +79,6 @@ class GeneralSettings(QWidget):
 
         # Clipboard group
         clipboard_group = QGroupBox("Portapapeles")
-        clipboard_group.setStyleSheet(behavior_group.styleSheet())
         clipboard_layout = QFormLayout()
         clipboard_layout.setSpacing(10)
 
@@ -119,7 +96,6 @@ class GeneralSettings(QWidget):
 
         # Import/Export group
         io_group = QGroupBox("Importar/Exportar")
-        io_group.setStyleSheet(behavior_group.styleSheet())
         io_layout = QVBoxLayout()
         io_layout.setSpacing(10)
 
@@ -148,7 +124,6 @@ class GeneralSettings(QWidget):
 
         # About group
         about_group = QGroupBox("Acerca de")
-        about_group.setStyleSheet(behavior_group.styleSheet())
         about_layout = QVBoxLayout()
         about_layout.setSpacing(5)
 
@@ -170,9 +145,33 @@ class GeneralSettings(QWidget):
 
         # Apply widget styles
         self.setStyleSheet("""
+            GeneralSettings {
+                background-color: #2b2b2b;
+            }
+            QLabel {
+                color: #cccccc;
+                background-color: transparent;
+            }
+            QGroupBox {
+                background-color: #2b2b2b;
+                color: #cccccc;
+                font-weight: bold;
+                font-size: 11pt;
+                border: 1px solid #3d3d3d;
+                border-radius: 4px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                color: #cccccc;
+            }
             QCheckBox {
                 color: #cccccc;
                 spacing: 5px;
+                background-color: transparent;
             }
             QCheckBox::indicator {
                 width: 18px;

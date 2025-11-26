@@ -36,13 +36,6 @@ class AppearanceSettings(QWidget):
 
     def init_ui(self):
         """Initialize the UI"""
-        # Set background color - use specific selector to not affect QGroupBox
-        self.setStyleSheet("""
-            AppearanceSettings {
-                background-color: #2b2b2b;
-            }
-        """)
-
         # Main layout
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(20)
@@ -50,21 +43,6 @@ class AppearanceSettings(QWidget):
 
         # Theme group
         theme_group = QGroupBox("Tema")
-        theme_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 11pt;
-                border: 1px solid #3d3d3d;
-                border-radius: 4px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
         theme_layout = QFormLayout()
         theme_layout.setSpacing(10)
 
@@ -81,7 +59,6 @@ class AppearanceSettings(QWidget):
 
         # Window group
         window_group = QGroupBox("Ventana")
-        window_group.setStyleSheet(theme_group.styleSheet())
         window_layout = QFormLayout()
         window_layout.setSpacing(10)
 
@@ -128,7 +105,6 @@ class AppearanceSettings(QWidget):
 
         # Animation group
         animation_group = QGroupBox("Animaciones")
-        animation_group.setStyleSheet(theme_group.styleSheet())
         animation_layout = QFormLayout()
         animation_layout.setSpacing(10)
 
@@ -156,6 +132,29 @@ class AppearanceSettings(QWidget):
 
         # Apply widget styles
         self.setStyleSheet("""
+            AppearanceSettings {
+                background-color: #2b2b2b;
+            }
+            QLabel {
+                color: #cccccc;
+                background-color: transparent;
+            }
+            QGroupBox {
+                background-color: #2b2b2b;
+                color: #cccccc;
+                font-weight: bold;
+                font-size: 11pt;
+                border: 1px solid #3d3d3d;
+                border-radius: 4px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                color: #cccccc;
+            }
             QComboBox, QSpinBox {
                 background-color: #2d2d2d;
                 color: #cccccc;
@@ -169,6 +168,13 @@ class AppearanceSettings(QWidget):
             }
             QComboBox::drop-down {
                 border: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #2d2d2d;
+                color: #cccccc;
+                selection-background-color: #007acc;
+                selection-color: #ffffff;
+                border: 1px solid #3d3d3d;
             }
             QSlider::groove:horizontal {
                 background: #2d2d2d;

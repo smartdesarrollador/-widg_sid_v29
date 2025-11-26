@@ -32,10 +32,108 @@ class FilesSettings(QWidget):
 
     def init_ui(self):
         """Inicializar interfaz de usuario"""
-        # Set background color
+        # Apply dark theme styles
         self.setStyleSheet("""
-            QWidget {
+            FilesSettings {
                 background-color: #2b2b2b;
+            }
+            QLabel {
+                color: #cccccc;
+                background-color: transparent;
+            }
+            QGroupBox {
+                background-color: #2b2b2b;
+                color: #cccccc;
+                font-weight: bold;
+                font-size: 11pt;
+                border: 1px solid #3d3d3d;
+                border-radius: 4px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                color: #cccccc;
+            }
+            QLineEdit {
+                background-color: #2d2d2d;
+                color: #cccccc;
+                border: 1px solid #3d3d3d;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #007acc;
+            }
+            QLineEdit:disabled {
+                background-color: #1e1e1e;
+                color: #666666;
+            }
+            QTableWidget {
+                background-color: #2d2d2d;
+                color: #cccccc;
+                alternate-background-color: #323232;
+                gridline-color: #3d3d3d;
+                border: 1px solid #3d3d3d;
+                border-radius: 4px;
+            }
+            QTableWidget::item {
+                padding: 5px;
+                color: #cccccc;
+            }
+            QTableWidget::item:selected {
+                background-color: #007acc;
+                color: #ffffff;
+            }
+            QTableWidget::item:hover {
+                background-color: #3d3d3d;
+            }
+            QHeaderView::section {
+                background-color: #252525;
+                color: #cccccc;
+                padding: 5px;
+                border: 1px solid #3d3d3d;
+                font-weight: bold;
+            }
+            QCheckBox {
+                color: #cccccc;
+                spacing: 5px;
+                background-color: transparent;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 1px solid #3d3d3d;
+                border-radius: 3px;
+                background-color: #2d2d2d;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #007acc;
+                border-color: #007acc;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #007acc;
+            }
+            QPushButton {
+                background-color: #2d2d2d;
+                color: #cccccc;
+                border: 1px solid #3d3d3d;
+                border-radius: 4px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+                border: 1px solid #007acc;
+            }
+            QPushButton:pressed {
+                background-color: #1e1e1e;
+            }
+            QPushButton:disabled {
+                background-color: #1e1e1e;
+                color: #666666;
+                border: 1px solid #2d2d2d;
             }
         """)
 
@@ -342,14 +440,16 @@ class FilesSettings(QWidget):
         if item.column() == 1:  # Columna de nombre de carpeta
             folder_name = item.text().strip()
             if not folder_name:
-                item.setBackground(Qt.GlobalColor.red)
+                from PyQt6.QtGui import QColor, QBrush
+                item.setBackground(QBrush(QColor("#8B0000")))  # Rojo oscuro para errores
                 QMessageBox.warning(
                     self,
                     "Nombre Inválido",
                     "El nombre de la carpeta no puede estar vacío."
                 )
             else:
-                item.setBackground(Qt.GlobalColor.white)
+                from PyQt6.QtGui import QColor, QBrush
+                item.setBackground(QBrush(QColor("#2d2d2d")))  # Fondo oscuro normal
 
     def _on_options_changed(self):
         """Handler cuando cambian las opciones"""
