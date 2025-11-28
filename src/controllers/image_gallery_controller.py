@@ -7,6 +7,8 @@ Gestiona la lógica de negocio, paginación, filtros y caché de thumbnails.
 """
 
 import logging
+import os
+from pathlib import Path
 from typing import List, Dict, Optional
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -73,7 +75,94 @@ class ImageGalleryController(QObject):
         # Caché de imágenes cargadas
         self.current_images = []
 
+        # Carpeta de imágenes relativa a files_base_path
+        self.images_folder = "IMAGENES"
+
         logger.info("ImageGalleryController initialized")
+
+    def _get_images_base_path(self) -> str:
+        """
+        Obtener la ruta base para imágenes (files_base_path + IMAGENES)
+
+        Returns:
+            str: Ruta base completa para imágenes
+        """
+        try:
+            # Try to get config from main_controller (can be 'config' or 'config_manager')
+            config = None
+            if self.main_controller:
+                if hasattr(self.main_controller, 'config_manager'):
+                    config = self.main_controller.config_manager
+                elif hasattr(self.main_controller, 'config'):
+                    config = self.main_controller.config
+
+            if config:
+                files_base_path = config.get_files_base_path()
+                if files_base_path:
+                    return os.path.join(files_base_path, self.images_folder)
+
+            # Fallback: usar directorio de la aplicación
+            return os.path.join(os.getcwd(), self.images_folder)
+        except Exception as e:
+            logger.error(f"Error getting images base path: {e}")
+            return os.path.join(os.getcwd(), self.images_folder)
+
+    def _resolve_image_path(self, relative_path: str) -> str:
+        """
+        Convertir ruta relativa a ruta absoluta
+
+        Args:
+            relative_path: Ruta relativa almacenada en BD
+
+        Returns:
+            str: Ruta absoluta completa
+        """
+        try:
+            base_path = self._get_images_base_path()
+            absolute_path = os.path.join(base_path, relative_path)
+            return os.path.normpath(absolute_path)
+        except Exception as e:
+            logger.error(f"Error resolving image path: {e}")
+            return relative_path
+
+    def _make_relative_path(self, absolute_path: str) -> str:
+        """
+        Convertir ruta absoluta a ruta relativa (para guardar en BD)
+
+        Args:
+            absolute_path: Ruta absoluta del archivo
+
+        Returns:
+            str: Ruta relativa desde images_base_path
+        """
+        try:
+            base_path = self._get_images_base_path()
+            relative = os.path.relpath(absolute_path, base_path)
+            return relative
+        except Exception as e:
+            logger.error(f"Error making relative path: {e}")
+            return absolute_path
+
+    def _resolve_images_paths(self, images: List[Dict]) -> List[Dict]:
+        """
+        Resolver rutas relativas a absolutas para una lista de imágenes
+
+        Args:
+            images: Lista de dicts con rutas relativas en 'content'
+
+        Returns:
+            Lista de dicts con rutas absolutas en 'content' y relativas en 'relative_path'
+        """
+        for image in images:
+            if 'content' in image:
+                relative_path = image['content']
+                absolute_path = self._resolve_image_path(relative_path)
+
+                # Guardar ambas rutas
+                image['relative_path'] = relative_path
+                image['content'] = absolute_path
+
+        return images
 
     def load_images(self, page: int = 1, apply_filters: bool = True) -> List[Dict]:
         """
@@ -113,6 +202,9 @@ class ImageGalleryController(QObject):
             # Obtener imágenes desde BD
             logger.debug(f"Loading images: page={page}, offset={offset}, filters={apply_filters}")
             images = self.db.get_image_items(**query_params)
+
+            # Resolver rutas relativas a absolutas
+            images = self._resolve_images_paths(images)
 
             # Actualizar contador total
             count_params = {k: v for k, v in query_params.items() if k not in ['limit', 'offset']}
