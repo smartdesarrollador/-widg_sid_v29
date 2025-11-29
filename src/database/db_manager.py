@@ -131,6 +131,20 @@ class DBManager:
                     pinned_order INTEGER DEFAULT 0
                 );
 
+                -- Tabla de listas (NUEVA - Refactorización v3.1.0)
+                CREATE TABLE IF NOT EXISTS listas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_used TIMESTAMP,
+                    use_count INTEGER DEFAULT 0,
+                    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+                    UNIQUE(category_id, name)
+                );
+
                 -- Tabla de items (COMPLETA con TODOS los campos)
                 CREATE TABLE IF NOT EXISTS items (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,9 +168,10 @@ class DBManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_used TIMESTAMP,
+                    list_id INTEGER DEFAULT NULL,
+                    orden_lista INTEGER DEFAULT 0,
                     is_list BOOLEAN DEFAULT 0,
                     list_group TEXT DEFAULT NULL,
-                    orden_lista INTEGER DEFAULT 0,
                     file_size INTEGER DEFAULT NULL,
                     file_type VARCHAR(50) DEFAULT NULL,
                     file_extension VARCHAR(10) DEFAULT NULL,
@@ -168,7 +183,8 @@ class DBManager:
                     is_component BOOLEAN DEFAULT 0,
                     name_component VARCHAR(50) DEFAULT NULL,
                     component_config TEXT DEFAULT NULL,
-                    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+                    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+                    FOREIGN KEY (list_id) REFERENCES listas(id) ON DELETE CASCADE
                 );
 
                 -- Tabla de historial de portapapeles
@@ -468,6 +484,11 @@ class DBManager:
 
                 -- ÍNDICES para optimización
                 CREATE INDEX IF NOT EXISTS idx_categories_order ON categories(order_index);
+
+                -- Índices para tabla listas
+                CREATE INDEX IF NOT EXISTS idx_listas_category ON listas(category_id);
+                CREATE INDEX IF NOT EXISTS idx_listas_name ON listas(category_id, name);
+
                 CREATE INDEX IF NOT EXISTS idx_items_category ON items(category_id);
                 CREATE INDEX IF NOT EXISTS idx_items_last_used ON items(last_used DESC);
                 CREATE INDEX IF NOT EXISTS idx_items_favorite ON items(is_favorite) WHERE is_favorite = 1;
@@ -478,6 +499,12 @@ class DBManager:
                 CREATE INDEX IF NOT EXISTS idx_bookmarks_order ON bookmarks(order_index);
                 CREATE INDEX IF NOT EXISTS idx_bookmarks_url ON bookmarks(url);
                 CREATE INDEX IF NOT EXISTS idx_speed_dials_position ON speed_dials(position);
+
+                -- Índices para items de listas (NUEVO - usando list_id)
+                CREATE INDEX IF NOT EXISTS idx_items_list_id ON items(list_id) WHERE list_id IS NOT NULL;
+                CREATE INDEX IF NOT EXISTS idx_items_list_orden ON items(list_id, orden_lista) WHERE list_id IS NOT NULL;
+
+                -- Índices obsoletos (mantener por compatibilidad durante migración)
                 CREATE INDEX IF NOT EXISTS idx_items_is_list ON items(is_list) WHERE is_list = 1;
                 CREATE INDEX IF NOT EXISTS idx_items_list_group ON items(list_group) WHERE list_group IS NOT NULL;
                 CREATE INDEX IF NOT EXISTS idx_items_orden_lista ON items(category_id, list_group, orden_lista) WHERE is_list = 1;
@@ -1826,7 +1853,201 @@ class DBManager:
         """
         return self.execute_query(query, (limit,))
 
-    # ========== LISTAS AVANZADAS ==========
+    # ========== CRUD TABLA LISTAS (NUEVA - v3.1.0) ==========
+
+    def create_lista(self, category_id: int, name: str, description: str = None) -> int:
+        """
+        Crea una nueva lista en la tabla listas
+
+        Args:
+            category_id: ID de la categoría
+            name: Nombre de la lista
+            description: Descripción opcional
+
+        Returns:
+            int: ID de la lista creada
+
+        Raises:
+            ValueError: Si el nombre ya existe en la categoría
+        """
+        # Validar unicidad
+        if not self.is_lista_name_unique(category_id, name):
+            raise ValueError(f"Ya existe una lista con el nombre '{name}' en esta categoría")
+
+        with self.transaction() as conn:
+            cursor = conn.execute('''
+                INSERT INTO listas (category_id, name, description, created_at, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ''', (category_id, name, description))
+
+            lista_id = cursor.lastrowid
+            logger.info(f"Lista creada: id={lista_id}, name='{name}', category={category_id}")
+            return lista_id
+
+    def get_lista(self, lista_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene una lista por ID
+
+        Args:
+            lista_id: ID de la lista
+
+        Returns:
+            Dict con datos de la lista o None si no existe
+        """
+        query = "SELECT * FROM listas WHERE id = ?"
+        results = self.execute_query(query, (lista_id,))
+        return results[0] if results else None
+
+    def get_lista_by_name(self, category_id: int, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene una lista por categoría y nombre
+
+        Args:
+            category_id: ID de la categoría
+            name: Nombre de la lista
+
+        Returns:
+            Dict con datos de la lista o None si no existe
+        """
+        query = "SELECT * FROM listas WHERE category_id = ? AND name = ?"
+        results = self.execute_query(query, (category_id, name))
+        return results[0] if results else None
+
+    def get_listas_by_category_new(self, category_id: int) -> List[Dict[str, Any]]:
+        """
+        Obtiene todas las listas de una categoría (desde tabla listas)
+
+        Args:
+            category_id: ID de la categoría
+
+        Returns:
+            List[Dict]: Lista de diccionarios con info completa de cada lista
+        """
+        query = '''
+            SELECT
+                l.*,
+                COUNT(i.id) as item_count,
+                MAX(i.last_used) as last_item_used
+            FROM listas l
+            LEFT JOIN items i ON i.list_id = l.id
+            WHERE l.category_id = ?
+            GROUP BY l.id
+            ORDER BY l.created_at DESC
+        '''
+        results = self.execute_query(query, (category_id,))
+        logger.debug(f"Encontradas {len(results)} listas en categoría {category_id} (tabla listas)")
+        return results
+
+    def update_lista(self, lista_id: int, **kwargs) -> bool:
+        """
+        Actualiza metadata de una lista
+
+        Args:
+            lista_id: ID de la lista
+            **kwargs: Campos a actualizar (name, description, updated_at, last_used, use_count)
+
+        Returns:
+            bool: True si se actualizó exitosamente
+        """
+        allowed_fields = ['name', 'description', 'updated_at', 'last_used', 'use_count']
+        updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+
+        if not updates:
+            return False
+
+        # Auto-actualizar updated_at
+        if 'updated_at' not in updates:
+            from datetime import datetime
+            updates['updated_at'] = datetime.now().isoformat()
+
+        set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values()) + [lista_id]
+
+        with self.transaction() as conn:
+            cursor = conn.execute(
+                f"UPDATE listas SET {set_clause} WHERE id = ?",
+                values
+            )
+            updated = cursor.rowcount > 0
+
+            if updated:
+                logger.info(f"Lista {lista_id} actualizada: {updates}")
+
+            return updated
+
+    def delete_lista(self, lista_id: int) -> bool:
+        """
+        Elimina una lista (CASCADE elimina items asociados automáticamente)
+
+        Args:
+            lista_id: ID de la lista
+
+        Returns:
+            bool: True si se eliminó exitosamente
+        """
+        with self.transaction() as conn:
+            cursor = conn.execute("DELETE FROM listas WHERE id = ?", (lista_id,))
+            deleted = cursor.rowcount > 0
+
+            if deleted:
+                logger.info(f"Lista {lista_id} eliminada (items eliminados en cascada)")
+
+            return deleted
+
+    def is_lista_name_unique(self, category_id: int, name: str, exclude_id: int = None) -> bool:
+        """
+        Verifica si el nombre de lista es único en la categoría
+
+        Args:
+            category_id: ID de la categoría
+            name: Nombre a verificar
+            exclude_id: ID de lista a excluir (para edición)
+
+        Returns:
+            bool: True si el nombre es único
+        """
+        query = "SELECT id FROM listas WHERE category_id = ? AND name = ?"
+        params = [category_id, name]
+
+        if exclude_id:
+            query += " AND id != ?"
+            params.append(exclude_id)
+
+        results = self.execute_query(query, params)
+        return len(results) == 0
+
+    def get_items_by_lista(self, lista_id: int) -> List[Dict[str, Any]]:
+        """
+        Obtiene todos los items de una lista, ordenados por orden_lista
+
+        Args:
+            lista_id: ID de la lista
+
+        Returns:
+            List[Dict]: Items de la lista ordenados
+        """
+        query = '''
+            SELECT i.*, l.name as lista_name
+            FROM items i
+            JOIN listas l ON i.list_id = l.id
+            WHERE i.list_id = ?
+            ORDER BY i.orden_lista ASC
+        '''
+        results = self.execute_query(query, (lista_id,))
+
+        # Descifrar contenido si es necesario
+        for item in results:
+            if item.get('is_sensitive'):
+                try:
+                    item['content'] = self.encryption_manager.decrypt(item['content'])
+                except Exception as e:
+                    logger.error(f"Error al descifrar item {item['id']}: {e}")
+                    item['content'] = '[ERROR: No se pudo descifrar]'
+
+        logger.debug(f"Obtenidos {len(results)} items de lista {lista_id}")
+        return results
+
+    # ========== LISTAS AVANZADAS (MÉTODOS LEGACY - mantener por compatibilidad) ==========
 
     def create_list(self, category_id: int, list_name: str, items_data: List[Dict[str, Any]]) -> List[int]:
         """
