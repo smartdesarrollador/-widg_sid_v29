@@ -1234,9 +1234,10 @@ class DBManager:
     def add_item(self, category_id: int, label: str, content: str,
                  item_type: str = 'TEXT', icon: str = None,
                  is_sensitive: bool = False, is_favorite: bool = False,
+                 favorite_order: int = 0,
                  tags: List[str] = None, description: str = None,
                  working_dir: str = None, color: str = None,
-                 badge: str = None,
+                 badge: str = None, shortcut: str = None,
                  is_active: bool = True, is_archived: bool = False,
                  # Nueva arquitectura v3.1.0
                  list_id: int = None,
@@ -1247,13 +1248,19 @@ class DBManager:
                  is_component: bool = False,
                  name_component: str = None,
                  component_config: Dict[str, Any] = None,
+                 html_content: str = None,
+                 css_content: str = None,
+                 js_content: str = None,
                  # File metadata fields (for TYPE PATH)
                  file_size: int = None,
                  file_type: str = None,
                  file_extension: str = None,
                  original_filename: str = None,
                  file_hash: str = None,
-                 preview_url: str = None) -> int:
+                 preview_url: str = None,
+                 # Table fields (nueva arquitectura v3.1.0)
+                 table_id: int = None,
+                 orden_table: str = None) -> int:
         """
         Add new item to category
 
@@ -1300,12 +1307,23 @@ class DBManager:
 
         query = """
             INSERT INTO items
-            (category_id, label, content, type, icon, is_sensitive, is_favorite, description, working_dir, color, badge, is_active, is_archived, list_id, is_list, list_group, orden_lista, is_component, name_component, component_config, file_size, file_type, file_extension, original_filename, file_hash, preview_url, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            (category_id, label, content, type, icon, is_sensitive, is_favorite, favorite_order,
+             description, working_dir, color, badge, shortcut, is_active, is_archived,
+             list_id, is_list, list_group, orden_lista, is_component, name_component,
+             component_config, html_content, css_content, js_content, file_size, file_type,
+             file_extension, original_filename, file_hash, preview_url, table_id, orden_table,
+             created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """
         item_id = self.execute_update(
             query,
-            (category_id, label, content, item_type, icon, is_sensitive, is_favorite, description, working_dir, color, badge, is_active, is_archived, list_id, is_list, list_group, orden_lista, is_component, name_component, component_config_json, file_size, file_type, file_extension, original_filename, file_hash, preview_url)
+            (category_id, label, content, item_type, icon, is_sensitive, is_favorite,
+             favorite_order, description, working_dir, color, badge, shortcut, is_active,
+             is_archived, list_id, is_list, list_group, orden_lista, is_component,
+             name_component, component_config_json, html_content, css_content, js_content,
+             file_size, file_type, file_extension, original_filename, file_hash, preview_url,
+             table_id, orden_table)
         )
 
         # Create tag relationships using relational structure
@@ -1323,9 +1341,9 @@ class DBManager:
 
         Args:
             item_id: Item ID to update
-            **kwargs: Fields to update (label, content, type, icon, is_sensitive, is_favorite, tags, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista, file_size, file_type, file_extension, original_filename, file_hash, preview_url)
+            **kwargs: Fields to update (label, content, type, icon, is_sensitive, is_favorite, favorite_order, tags, description, working_dir, color, badge, shortcut, is_active, is_archived, is_list, list_group, orden_lista, is_component, name_component, component_config, html_content, css_content, js_content, file_size, file_type, file_extension, original_filename, file_hash, preview_url, table_id, orden_table)
         """
-        allowed_fields = ['label', 'content', 'type', 'icon', 'is_sensitive', 'is_favorite', 'description', 'working_dir', 'color', 'badge', 'is_active', 'is_archived', 'is_list', 'list_group', 'orden_lista', 'file_size', 'file_type', 'file_extension', 'original_filename', 'file_hash', 'preview_url']
+        allowed_fields = ['label', 'content', 'type', 'icon', 'is_sensitive', 'is_favorite', 'favorite_order', 'description', 'working_dir', 'color', 'badge', 'shortcut', 'is_active', 'is_archived', 'is_list', 'list_group', 'orden_lista', 'is_component', 'name_component', 'component_config', 'html_content', 'css_content', 'js_content', 'file_size', 'file_type', 'file_extension', 'original_filename', 'file_hash', 'preview_url', 'table_id', 'orden_table']
         updates = []
         params = []
 
@@ -1392,6 +1410,158 @@ class DBManager:
         query = "DELETE FROM items WHERE id = ?"
         self.execute_update(query, (item_id,))
         logger.info(f"Item deleted: ID {item_id}")
+
+    # ==================== Table CRUD Operations ====================
+
+    def add_table(self, name: str, description: str = "") -> int:
+        """
+        Create a new table
+
+        Args:
+            name: Table name (must be unique)
+            description: Optional table description
+
+        Returns:
+            int: New table ID
+        """
+        query = """
+            INSERT INTO tables (name, description)
+            VALUES (?, ?)
+        """
+        table_id = self.execute_update(query, (name, description))
+        logger.info(f"Table created: {name} (ID: {table_id})")
+        return table_id
+
+    def get_table(self, table_id: int) -> Optional[dict]:
+        """
+        Get table by ID
+
+        Args:
+            table_id: Table ID
+
+        Returns:
+            dict: Table data or None if not found
+        """
+        query = "SELECT * FROM tables WHERE id = ?"
+        result = self.execute_query(query, (table_id,))
+        return result[0] if result else None
+
+    def get_table_by_name(self, name: str) -> Optional[dict]:
+        """
+        Get table by name
+
+        Args:
+            name: Table name
+
+        Returns:
+            dict: Table data or None if not found
+        """
+        query = "SELECT * FROM tables WHERE name = ?"
+        result = self.execute_query(query, (name,))
+        return result[0] if result else None
+
+    def get_all_tables(self) -> list:
+        """
+        Get all tables
+
+        Returns:
+            list: List of table dictionaries
+        """
+        query = "SELECT * FROM tables ORDER BY name"
+        return self.execute_query(query)
+
+    def update_table(self, table_id: int, name: str = None, description: str = None) -> None:
+        """
+        Update table
+
+        Args:
+            table_id: Table ID
+            name: New name (optional)
+            description: New description (optional)
+        """
+        updates = []
+        params = []
+
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name)
+        if description is not None:
+            updates.append("description = ?")
+            params.append(description)
+
+        if not updates:
+            return
+
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(table_id)
+
+        query = f"UPDATE tables SET {', '.join(updates)} WHERE id = ?"
+        self.execute_update(query, tuple(params))
+        logger.info(f"Table updated: ID {table_id}")
+
+    def delete_table(self, table_id: int) -> None:
+        """
+        Delete table (CASCADE will delete associated items)
+
+        Args:
+            table_id: Table ID
+        """
+        query = "DELETE FROM tables WHERE id = ?"
+        self.execute_update(query, (table_id,))
+        logger.info(f"Table deleted: ID {table_id} (items CASCADE deleted)")
+
+    def get_items_by_table(self, table_id: int) -> list:
+        """
+        Get all items belonging to a table, ordered by coordinates
+
+        Args:
+            table_id: Table ID
+
+        Returns:
+            list: List of item dictionaries
+        """
+        query = """
+            SELECT * FROM items
+            WHERE table_id = ?
+            ORDER BY orden_table ASC, created_at ASC
+        """
+        return self.execute_query(query, (table_id,))
+
+    def count_items_in_table(self, table_id: int) -> int:
+        """
+        Count items in a table
+
+        Args:
+            table_id: Table ID
+
+        Returns:
+            int: Number of items
+        """
+        query = "SELECT COUNT(*) as count FROM items WHERE table_id = ?"
+        result = self.execute_query(query, (table_id,))
+        return result[0]['count'] if result else 0
+
+    def get_tables_by_category(self, category_id: int) -> list:
+        """
+        Get all unique tables in a category (with item count)
+
+        Args:
+            category_id: Category ID
+
+        Returns:
+            list: List of dicts with table info and item count
+        """
+        query = """
+            SELECT t.*, COUNT(i.id) as item_count
+            FROM tables t
+            INNER JOIN items i ON t.id = i.table_id
+            WHERE i.category_id = ?
+            GROUP BY t.id
+            ORDER BY t.name
+        """
+        return self.execute_query(query, (category_id,))
+
+    # ==================== End Table CRUD ====================
 
     def update_last_used(self, item_id: int) -> None:
         """
@@ -2626,28 +2796,24 @@ class DBManager:
         result = self.execute_query(query, tuple(params))
         count = result[0]['count'] if result else 0
 
-        # Si hay filtro de tags, necesitamos obtener items y filtrar manualmente
+        # Si hay filtro de tags, necesitamos obtener items y filtrar usando la tabla tags
         if tags:
-            # Obtener todos los items (sin limit) y filtrar por tags
-            items_query = f"SELECT id, tags FROM items WHERE {where_clause}"
-            items_result = self.execute_query(items_query, tuple(params))
+            # Construir query con JOINs a tags e item_tags
+            tag_placeholders = ','.join(['?' for _ in tags])
+            tags_query = f"""
+                SELECT COUNT(DISTINCT i.id) as count
+                FROM items i
+                JOIN item_tags it ON i.id = it.item_id
+                JOIN tags t ON it.tag_id = t.id
+                WHERE {where_clause}
+                AND t.name IN ({tag_placeholders})
+            """
 
-            filtered_count = 0
-            for item in items_result:
-                # Parsear tags
-                item_tags = []
-                if item['tags']:
-                    try:
-                        item_tags = json.loads(item['tags'])
-                    except json.JSONDecodeError:
-                        if isinstance(item['tags'], str):
-                            item_tags = [tag.strip() for tag in item['tags'].split(',') if tag.strip()]
+            # Combinar parámetros
+            tag_params = list(params) + [tag.lower() for tag in tags]
 
-                # Verificar si tiene alguno de los tags especificados
-                if any(tag.lower() in [t.lower() for t in item_tags] for tag in tags):
-                    filtered_count += 1
-
-            count = filtered_count
+            tag_result = self.execute_query(tags_query, tuple(tag_params))
+            count = tag_result[0]['count'] if tag_result else 0
 
         logger.debug(f"Image count: {count}")
         return count
@@ -4181,7 +4347,7 @@ class DBManager:
 
                 # Validate table name is unique
                 cursor.execute(
-                    "SELECT COUNT(*) as count FROM items WHERE name_table = ?",
+                    "SELECT COUNT(*) as count FROM tables WHERE name = ?",
                     (table_name,)
                 )
                 if cursor.fetchone()['count'] > 0:
@@ -4192,6 +4358,13 @@ class DBManager:
                         'table_name': table_name,
                         'errors': [f"Table name '{table_name}' already exists"]
                     }
+
+                # Create table entry
+                cursor.execute(
+                    "INSERT INTO tables (name, description) VALUES (?, ?)",
+                    (table_name, f"Table created from bulk import")
+                )
+                table_id = cursor.lastrowid
 
                 # Preparar tags base (los que vienen del usuario)
                 base_tags = tags if tags else []
@@ -4246,9 +4419,6 @@ class DBManager:
                                 if tag and tag not in cell_tags:
                                     cell_tags.append(tag)
 
-                            # Convertir a JSON para almacenar
-                            tags_json = json.dumps(cell_tags)
-
                             # Determinar si esta columna es sensible
                             is_sensitive = 1 if col_idx in sensitive_cols_set else 0
 
@@ -4266,26 +4436,35 @@ class DBManager:
                             cursor.execute("""
                                 INSERT INTO items (
                                     category_id, label, content, type,
-                                    is_table, name_table, orden_table,
+                                    table_id, orden_table,
                                     is_list, list_group, orden_lista,
-                                    is_sensitive, tags, created_at, updated_at
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                                    is_sensitive, created_at, updated_at
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                             """, (
                                 int(category_id),  # Convert to INTEGER
                                 column_name,  # Label = column name
                                 content_to_store,  # Content = cell value (cifrado si es sensible)
                                 item_type,  # Type (URL si está en url_columns, TEXT por defecto)
-                                1,  # is_table = True
-                                table_name,  # name_table
+                                table_id,  # table_id (FK a tabla tables)
                                 json.dumps([row_idx, col_idx]),  # orden_table as JSON [row, col]
                                 1,  # is_list = True (for row grouping)
                                 list_group_name,  # list_group = {table_name}_{primera_celda}
                                 col_idx + 1,  # orden_lista = column index + 1 (empieza en 1)
-                                is_sensitive,  # is_sensitive (1 si columna marcada como sensible)
-                                tags_json  # tags en formato JSON: ["tabla", "nombre_tabla", "nombre_fila", "nombre_columna"]
+                                is_sensitive  # is_sensitive (1 si columna marcada como sensible)
                             ))
 
+                            item_id = cursor.lastrowid
                             items_created += 1
+
+                            # Crear relaciones en item_tags para cada tag
+                            # Usar la función set_item_tags que ya maneja la tabla tags y item_tags
+                            if cell_tags:
+                                # Necesitamos hacer esto fuera de la transacción actual
+                                # porque set_item_tags usa su propia transacción
+                                # Guardar para procesarlos después
+                                if not hasattr(self, '_pending_tags'):
+                                    self._pending_tags = []
+                                self._pending_tags.append((item_id, cell_tags))
 
                         except Exception as e:
                             error_msg = f"Error creating item at [{row_idx}, {col_idx}]: {e}"
@@ -4295,7 +4474,21 @@ class DBManager:
             # Update category item_count (outside transaction)
             self.update_category_item_count(category_id)
 
-            logger.info(f"✓ Table '{table_name}' created: {items_created} items")
+            # Procesar tags pendientes (fuera de la transacción principal)
+            if hasattr(self, '_pending_tags') and self._pending_tags:
+                logger.info(f"Processing {len(self._pending_tags)} pending tag associations...")
+                for item_id, tags_list in self._pending_tags:
+                    try:
+                        self.set_item_tags(item_id, tags_list)
+                    except Exception as e:
+                        error_msg = f"Error setting tags for item {item_id}: {e}"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
+
+                # Limpiar tags pendientes
+                self._pending_tags = []
+
+            logger.info(f"Table '{table_name}' created: {items_created} items")
 
             return {
                 'success': items_created > 0,
@@ -4327,9 +4520,10 @@ class DBManager:
             logger.info(f"Retrieving items for table '{table_name}'")
 
             query = """
-                SELECT * FROM items
-                WHERE name_table = ? AND is_table = 1
-                ORDER BY orden_table
+                SELECT i.* FROM items i
+                INNER JOIN tables t ON i.table_id = t.id
+                WHERE t.name = ?
+                ORDER BY i.orden_table
             """
             results = self.execute_query(query, (table_name,))
 
@@ -4353,9 +4547,9 @@ class DBManager:
             logger.error(f"Error retrieving table items for '{table_name}': {e}")
             return []
 
-    def get_tables_by_category(self, category_id: str) -> list:
+    def get_tables_by_category_legacy(self, category_id: str) -> list:
         """
-        Get list of all tables in a category
+        Get list of all tables in a category (legacy version - refactored)
 
         Args:
             category_id: Category ID
@@ -4369,27 +4563,30 @@ class DBManager:
             with self.transaction() as conn:
                 cursor = conn.cursor()
 
-                # Get unique table names in this category
+                # Get unique tables in this category
                 cursor.execute("""
                     SELECT
-                        name_table,
-                        COUNT(*) as item_count,
-                        MIN(created_at) as created_at
-                    FROM items
-                    WHERE category_id = ? AND is_table = 1 AND name_table IS NOT NULL
-                    GROUP BY name_table
+                        t.name,
+                        t.id,
+                        COUNT(i.id) as item_count,
+                        MIN(i.created_at) as created_at
+                    FROM tables t
+                    INNER JOIN items i ON t.id = i.table_id
+                    WHERE i.category_id = ?
+                    GROUP BY t.id, t.name
                     ORDER BY created_at DESC
                 """, (category_id,))
 
                 tables = []
                 for row in cursor.fetchall():
-                    table_name = row['name_table']
+                    table_name = row['name']
+                    table_id = row['id']
 
                     # Get dimensions (max row and col from orden_table)
                     cursor.execute("""
                         SELECT orden_table FROM items
-                        WHERE name_table = ? AND is_table = 1
-                    """, (table_name,))
+                        WHERE table_id = ?
+                    """, (table_id,))
 
                     coords = []
                     for item_row in cursor.fetchall():
@@ -4440,8 +4637,9 @@ class DBManager:
 
                 # Find item at this position
                 cursor.execute("""
-                    SELECT id FROM items
-                    WHERE name_table = ? AND orden_table = ? AND is_table = 1
+                    SELECT i.id FROM items i
+                    INNER JOIN tables t ON i.table_id = t.id
+                    WHERE t.name = ? AND i.orden_table = ?
                 """, (table_name, orden_json))
 
                 result = cursor.fetchone()
@@ -4455,9 +4653,9 @@ class DBManager:
                         WHERE id = ?
                     """, (new_content, item_id))
 
-                    # Si se actualizó la primera columna, actualizar list_group y tags de toda la fila
+                    # Si se actualizó la primera columna, actualizar list_group de toda la fila
                     if col == 0 and new_content and new_content.strip():
-                        # Sanitizar el nuevo valor para list_group y tag
+                        # Sanitizar el nuevo valor para list_group
                         first_cell_value = new_content.strip()
                         first_cell_value = first_cell_value.replace(' ', '_')
                         first_cell_value = ''.join(c for c in first_cell_value if c.isalnum() or c in ('_', '-'))
@@ -4465,42 +4663,17 @@ class DBManager:
                             first_cell_value = first_cell_value[:50]
 
                         if first_cell_value:
-                            new_list_group = f"{table_name}_{first_cell_value}"
+                            new_list_group = first_cell_value  # Solo el valor de la primera celda
 
-                            # Obtener el tag anterior de la primera celda para reemplazarlo
-                            cursor.execute("""
-                                SELECT tags FROM items
-                                WHERE name_table = ? AND is_table = 1
-                                AND json_extract(orden_table, '$[0]') = ?
-                                LIMIT 1
-                            """, (table_name, row))
-
-                            old_tags_result = cursor.fetchone()
-                            if old_tags_result and old_tags_result['tags']:
-                                old_tags = old_tags_result['tags']
-                                # Separar tags existentes
-                                tag_list = [t.strip() for t in old_tags.split(',') if t.strip()]
-
-                                # Remover el tag anterior de la primera celda (el último tag que no sea table_name)
-                                # Mantener solo table_name y otros tags, agregar el nuevo
-                                filtered_tags = [t for t in tag_list if t == table_name or not any(c in t for c in ['_', '-']) or t == table_name]
-                                # Simplemente agregar el nuevo tag
-                                if table_name in tag_list:
-                                    new_tags = f"{table_name},{first_cell_value}"
-                                else:
-                                    new_tags = f"{table_name},{first_cell_value}"
-                            else:
-                                new_tags = f"{table_name},{first_cell_value}"
-
-                            # Actualizar list_group y tags de todos los items de esta fila
+                            # Actualizar list_group de todos los items de esta fila
                             cursor.execute("""
                                 UPDATE items
-                                SET list_group = ?, tags = ?, updated_at = datetime('now')
-                                WHERE name_table = ? AND is_table = 1
+                                SET list_group = ?, updated_at = datetime('now')
+                                WHERE table_id = (SELECT id FROM tables WHERE name = ?)
                                 AND json_extract(orden_table, '$[0]') = ?
-                            """, (new_list_group, new_tags, table_name, row))
+                            """, (new_list_group, table_name, row))
 
-                            logger.info(f"✓ Updated list_group and tags for row {row} to '{new_list_group}' and '{new_tags}'")
+                            logger.info(f"Updated list_group for row {row} to '{new_list_group}'")
 
                     logger.info(f"✓ Cell updated successfully")
                     return True
@@ -4512,9 +4685,9 @@ class DBManager:
             logger.error(f"Error updating table cell: {e}")
             return False
 
-    def delete_table(self, table_name: str) -> bool:
+    def delete_table_by_name(self, table_name: str) -> bool:
         """
-        Delete all items belonging to a table
+        Delete all items belonging to a table (legacy method)
 
         Args:
             table_name: Name of the table to delete
@@ -4530,18 +4703,19 @@ class DBManager:
 
                 # Get category_id before deleting (for updating item_count)
                 cursor.execute("""
-                    SELECT DISTINCT category_id FROM items
-                    WHERE name_table = ? AND is_table = 1
+                    SELECT DISTINCT i.category_id FROM items i
+                    INNER JOIN tables t ON i.table_id = t.id
+                    WHERE t.name = ?
                     LIMIT 1
                 """, (table_name,))
 
                 result = cursor.fetchone()
                 category_id = result['category_id'] if result else None
 
-                # Delete all items from this table
+                # Delete table (CASCADE will delete items)
                 cursor.execute("""
-                    DELETE FROM items
-                    WHERE name_table = ? AND is_table = 1
+                    DELETE FROM tables
+                    WHERE name = ?
                 """, (table_name,))
 
                 deleted_count = cursor.rowcount

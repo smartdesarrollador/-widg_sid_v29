@@ -400,16 +400,11 @@ class TableController(QObject):
             Lista de nombres de tablas
         """
         try:
-            # Obtener todas las tablas desde la BD
-            # Usar query directo para obtener nombres únicos de tablas
-            query = "SELECT DISTINCT name_table FROM items WHERE is_table = 1 AND name_table IS NOT NULL"
-
-            with self.db.transaction() as conn:
-                cursor = conn.execute(query)
-                rows = cursor.fetchall()
+            # Obtener todas las tablas desde la BD usando la nueva estructura
+            tables = self.db.get_all_tables()
 
             # Extraer nombres
-            table_names = [row[0] for row in rows if row[0]]
+            table_names = [table['name'] for table in tables]
 
             logger.debug(f"Found {len(table_names)} existing tables")
             return table_names

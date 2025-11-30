@@ -189,11 +189,8 @@ class TableRenameDialog(QDialog):
 
         # Obtener lista de tablas existentes
         try:
-            query = "SELECT DISTINCT name_table FROM items WHERE is_table = 1 AND name_table IS NOT NULL"
-            with self.db.transaction() as conn:
-                cursor = conn.execute(query)
-                rows = cursor.fetchall()
-            existing_tables = [row[0] for row in rows if row[0]]
+            tables = self.db.get_all_tables()
+            existing_tables = [table['name'] for table in tables]
 
         except Exception as e:
             logger.error(f"Error getting existing tables: {e}")
@@ -229,38 +226,26 @@ class TableRenameDialog(QDialog):
 
         # Ejecutar renombrado en BD
         try:
-            query = """
-                UPDATE items
-                SET name_table = ?
-                WHERE name_table = ? AND is_table = 1
-            """
+            # Get table by current name and update it
+            table = self.db.get_table_by_name(self.current_name)
+            if not table:
+                raise Exception(f"Table '{self.current_name}' not found")
 
-            with self.db.transaction() as conn:
-                cursor = conn.execute(query, (new_name, self.current_name))
-                updated_count = cursor.rowcount
+            self.db.update_table(table['id'], name=new_name)
 
-            if updated_count > 0:
-                QMessageBox.information(
-                    self,
-                    "Tabla Renombrada",
-                    f"Tabla renombrada exitosamente.\n\n"
-                    f"{updated_count} items actualizados."
-                )
+            QMessageBox.information(
+                self,
+                "Tabla Renombrada",
+                f"Tabla renombrada exitosamente."
+            )
 
-                # Emitir señal
-                self.table_renamed.emit(self.current_name, new_name)
+            # Emitir señal
+            self.table_renamed.emit(self.current_name, new_name)
 
-                logger.info(f"Table renamed: {self.current_name} -> {new_name}")
+            logger.info(f"Table renamed: {self.current_name} -> {new_name}")
 
-                # Cerrar diálogo
-                self.accept()
-
-            else:
-                QMessageBox.warning(
-                    self,
-                    "Sin Cambios",
-                    "No se encontraron items para actualizar."
-                )
+            # Cerrar diálogo
+            self.accept()
 
         except Exception as e:
             logger.error(f"Error renaming table: {e}", exc_info=True)

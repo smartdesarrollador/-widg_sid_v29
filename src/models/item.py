@@ -48,7 +48,10 @@ class Item:
         file_type: Optional[str] = None,
         file_extension: Optional[str] = None,
         original_filename: Optional[str] = None,
-        file_hash: Optional[str] = None
+        file_hash: Optional[str] = None,
+        # Campos para tablas (nueva arquitectura v3.1.0)
+        table_id: Optional[int] = None,
+        orden_table: Optional[str] = None
     ):
         self.id = item_id
         self.label = label
@@ -79,6 +82,9 @@ class Item:
         self.file_extension = file_extension  # Extensión con punto (.jpg, .mp4)
         self.original_filename = original_filename  # Nombre original del archivo
         self.file_hash = file_hash  # Hash SHA256 para detección de duplicados
+        # Campos para tablas (nueva arquitectura v3.1.0)
+        self.table_id = table_id  # FK a tabla tables (None si no es parte de tabla)
+        self.orden_table = orden_table  # Coordenadas JSON [row, col] dentro de la tabla
         self.created_at = datetime.now()
         self.last_used = datetime.now()
 
@@ -127,7 +133,10 @@ class Item:
             "file_type": self.file_type,
             "file_extension": self.file_extension,
             "original_filename": self.original_filename,
-            "file_hash": self.file_hash
+            "file_hash": self.file_hash,
+            # Campos de tablas (nueva arquitectura v3.1.0)
+            "table_id": self.table_id,
+            "orden_table": self.orden_table
         }
 
     @classmethod
@@ -168,7 +177,10 @@ class Item:
             file_type=data.get("file_type"),
             file_extension=data.get("file_extension"),
             original_filename=data.get("original_filename"),
-            file_hash=data.get("file_hash")
+            file_hash=data.get("file_hash"),
+            # Campos de tablas (nueva arquitectura v3.1.0)
+            table_id=data.get("table_id"),
+            orden_table=data.get("orden_table")
         )
 
     # Estado y visibilidad
@@ -340,6 +352,58 @@ class Item:
         self.is_component = False
         self.name_component = None
         self.component_config = {}
+
+    # Métodos para tablas (nueva arquitectura v3.1.0)
+    def is_table_item(self) -> bool:
+        """
+        Retorna True si este item es parte de una tabla
+
+        Returns:
+            bool: True si el item pertenece a una tabla (table_id is not None)
+        """
+        return self.table_id is not None
+
+    def get_table_id(self) -> Optional[int]:
+        """
+        Retorna el ID de la tabla a la que pertenece este item
+
+        Returns:
+            Optional[int]: table_id o None si no pertenece a ninguna tabla
+        """
+        return self.table_id if self.is_table_item() else None
+
+    def get_table_coordinates(self) -> Optional[list]:
+        """
+        Retorna las coordenadas [row, col] de este item en la tabla
+
+        Returns:
+            Optional[list]: [row, col] o None si no es parte de tabla o no tiene coordenadas
+        """
+        if not self.is_table_item() or not self.orden_table:
+            return None
+        try:
+            import json
+            return json.loads(self.orden_table)
+        except:
+            return None
+
+    def set_as_table_item(self, table_id: int, row: int, col: int) -> None:
+        """
+        Configura este item como parte de una tabla
+
+        Args:
+            table_id: ID de la tabla (FK a tabla tables)
+            row: Fila en la tabla (0-indexed)
+            col: Columna en la tabla (0-indexed)
+        """
+        import json
+        self.table_id = table_id
+        self.orden_table = json.dumps([row, col])
+
+    def remove_from_table(self) -> None:
+        """Remueve este item de cualquier tabla (lo convierte en item normal)"""
+        self.table_id = None
+        self.orden_table = None
 
     def __repr__(self) -> str:
         list_info = f", list_id={self.list_id}[{self.orden_lista}]" if self.is_list_item() else ""

@@ -204,11 +204,10 @@ class ItemButton(QFrame):
             main_layout.addWidget(file_badge)
 
         # Table badge (for table items)
-        if hasattr(self.item, 'is_table') and self.item.is_table:
+        if hasattr(self.item, 'table_id') and self.item.table_id:
             table_badge = QLabel("📊")
             table_badge.setStyleSheet(PanelStyles.get_badge_style('default'))
-            table_name = getattr(self.item, 'name_table', 'Tabla')
-            table_badge.setToolTip(f"Item de tabla: {table_name}")
+            table_badge.setToolTip(f"Item de tabla (ID: {self.item.table_id})")
             main_layout.addWidget(table_badge)
 
         # Spacer to push action buttons to the right
@@ -382,7 +381,7 @@ class ItemButton(QFrame):
         # Common buttons (for all item types)
 
         # View table button (for table items)
-        if hasattr(self.item, 'is_table') and self.item.is_table:
+        if hasattr(self.item, 'table_id') and self.item.table_id:
             self.view_table_btn = QPushButton("🗂️")
             self.view_table_btn.setFixedSize(28, 28)
             self.view_table_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -402,8 +401,7 @@ class ItemButton(QFrame):
                     background-color: #004578;
                 }
             """)
-            table_name = getattr(self.item, 'name_table', 'Tabla')
-            self.view_table_btn.setToolTip(f"Ver tabla completa: {table_name}")
+            self.view_table_btn.setToolTip(f"Ver tabla completa")
             self.view_table_btn.clicked.connect(self.view_table)
             main_layout.addWidget(self.view_table_btn)
 
@@ -1071,13 +1069,19 @@ class ItemButton(QFrame):
 
     def view_table(self):
         """Emite señal para ver la tabla completa"""
-        if not hasattr(self.item, 'is_table') or not self.item.is_table:
+        if not hasattr(self.item, 'table_id') or not self.item.table_id:
             return
 
-        table_name = getattr(self.item, 'name_table', None)
-        if not table_name:
-            logger.warning("Table item without name_table attribute")
+        # Get table name from database
+        from src.database.db_manager import DBManager
+        db = DBManager()
+        table = db.get_table(self.item.table_id)
+
+        if not table:
+            logger.warning(f"Table not found for table_id: {self.item.table_id}")
             return
+
+        table_name = table['name']
 
         # Emitir señal para que el FloatingPanel maneje la apertura del diálogo
         self.table_view_requested.emit(table_name)
