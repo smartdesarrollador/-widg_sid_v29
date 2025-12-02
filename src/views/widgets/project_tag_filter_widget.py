@@ -214,6 +214,16 @@ class ProjectTagFilterWidget(QWidget):
                 QCheckBox {{
                     color: #ecf0f1;
                     spacing: 8px;
+                    padding: 6px 10px;
+                    border-radius: 4px;
+                    background-color: transparent;
+                }}
+                QCheckBox:checked {{
+                    background-color: {tag.color}33;
+                    border: 1px solid {tag.color};
+                }}
+                QCheckBox:hover {{
+                    background-color: {tag.color}22;
                 }}
                 QCheckBox::indicator {{
                     width: 18px;
