@@ -6579,6 +6579,142 @@ class DBManager:
             logger.error(f"Error obteniendo tags populares: {e}")
             return []
 
+    # ==================== Project Component Tags ====================
+
+    def add_tag_to_project_component(self, component_id: int, tag_id: int) -> bool:
+        """
+        Asocia un tag a un componente de proyecto
+
+        Args:
+            component_id: ID del componente de proyecto
+            tag_id: ID del tag
+
+        Returns:
+            True si se asoció correctamente
+        """
+        try:
+            with self.transaction() as conn:
+                conn.execute("""
+                    INSERT INTO project_element_tag_associations
+                        (project_component_id, tag_id)
+                    VALUES (?, ?)
+                """, (component_id, tag_id))
+                return True
+
+        except Exception as e:
+            logger.error(f"Error asociando tag {tag_id} a componente {component_id}: {e}")
+            return False
+
+    def remove_tag_from_project_component(self, component_id: int, tag_id: int) -> bool:
+        """
+        Remueve un tag de un componente de proyecto
+
+        Args:
+            component_id: ID del componente de proyecto
+            tag_id: ID del tag
+
+        Returns:
+            True si se removió correctamente
+        """
+        try:
+            with self.transaction() as conn:
+                conn.execute("""
+                    DELETE FROM project_element_tag_associations
+                    WHERE project_component_id = ? AND tag_id = ?
+                """, (component_id, tag_id))
+                return True
+
+        except Exception as e:
+            logger.error(f"Error removiendo tag {tag_id} de componente {component_id}: {e}")
+            return False
+
+    def get_tags_for_project_component(self, component_id: int) -> List[Dict]:
+        """
+        Obtiene todos los tags de un componente de proyecto
+
+        Args:
+            component_id: ID del componente de proyecto
+
+        Returns:
+            Lista de tags asociados al componente
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT t.id, t.name, t.color, t.description, t.created_at, t.updated_at
+                FROM project_element_tags t
+                INNER JOIN project_element_tag_associations a ON t.id = a.tag_id
+                WHERE a.project_component_id = ?
+                ORDER BY t.name ASC
+            """, (component_id,))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error obteniendo tags para componente {component_id}: {e}")
+            return []
+
+    def get_project_components_by_tag(self, tag_id: int) -> List[Dict]:
+        """
+        Obtiene todos los componentes que tienen un tag específico
+
+        Args:
+            tag_id: ID del tag
+
+        Returns:
+            Lista de componentes que tienen ese tag
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT pc.id, pc.project_id, pc.component_type, pc.content,
+                       pc.order_index, pc.created_at
+                FROM project_components pc
+                INNER JOIN project_element_tag_associations a ON pc.id = a.project_component_id
+                WHERE a.tag_id = ?
+                ORDER BY pc.order_index ASC
+            """, (tag_id,))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error obteniendo componentes con tag {tag_id}: {e}")
+            return []
+
+    def update_project_component_tags(self, component_id: int, tag_ids: List[int]) -> bool:
+        """
+        Actualiza todos los tags de un componente de proyecto
+        (reemplaza los tags existentes)
+
+        Args:
+            component_id: ID del componente de proyecto
+            tag_ids: Lista de IDs de tags a asociar
+
+        Returns:
+            True si se actualizó correctamente
+        """
+        try:
+            with self.transaction() as conn:
+                # Eliminar todas las asociaciones existentes
+                conn.execute("""
+                    DELETE FROM project_element_tag_associations
+                    WHERE project_component_id = ?
+                """, (component_id,))
+
+                # Agregar las nuevas asociaciones
+                for tag_id in tag_ids:
+                    conn.execute("""
+                        INSERT INTO project_element_tag_associations
+                            (project_component_id, tag_id)
+                        VALUES (?, ?)
+                    """, (component_id, tag_id))
+
+                return True
+
+        except Exception as e:
+            logger.error(f"Error actualizando tags de componente {component_id}: {e}")
+            return False
+
     # ==================== Context Manager ====================
 
     def __enter__(self):

@@ -209,21 +209,26 @@ class ProjectTagFilterWidget(QWidget):
         for tag in tags_sorted:
             checkbox = QCheckBox(tag.name)
             checkbox.setFont(QFont("Segoe UI", 9))
+            # Estilo con color de fondo que cambia al seleccionar
             checkbox.setStyleSheet(f"""
                 QCheckBox {{
                     color: #ecf0f1;
                     spacing: 8px;
                 }}
                 QCheckBox::indicator {{
-                    width: 16px;
-                    height: 16px;
+                    width: 18px;
+                    height: 18px;
                     border: 2px solid {tag.color};
-                    border-radius: 3px;
-                    background-color: #34495e;
+                    border-radius: 4px;
+                    background-color: transparent;
                 }}
                 QCheckBox::indicator:checked {{
                     background-color: {tag.color};
-                    border-color: {tag.color};
+                    border: 2px solid {tag.color};
+                }}
+                QCheckBox::indicator:unchecked {{
+                    background-color: #2c3e50;
+                    border: 2px solid {tag.color};
                 }}
                 QCheckBox::indicator:hover {{
                     border-width: 3px;

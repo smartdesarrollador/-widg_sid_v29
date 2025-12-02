@@ -11,7 +11,7 @@ Componentes soportados:
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                              QLabel, QFrame, QTextEdit, QMessageBox, QCheckBox)
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QCursor
+from PyQt6.QtGui import QCursor, QFont
 import logging
 
 logger = logging.getLogger(__name__)
@@ -149,6 +149,10 @@ class ProjectComponentWidget(QWidget):
             top_row.addWidget(content_label, 1)
 
         container_layout.addLayout(top_row)
+
+        # Agregar tags si existen
+        self._add_tags_display(container_layout)
+
         parent_layout.addWidget(container)
 
     def _create_alert_widget(self, parent_layout):
@@ -215,6 +219,10 @@ class ProjectComponentWidget(QWidget):
             top_row.addWidget(content_label, 1)
 
         container_layout.addLayout(top_row)
+
+        # Agregar tags si existen
+        self._add_tags_display(container_layout)
+
         parent_layout.addWidget(container)
 
     def _create_note_widget(self, parent_layout):
@@ -279,6 +287,10 @@ class ProjectComponentWidget(QWidget):
             top_row.addWidget(content_label, 1)
 
         container_layout.addLayout(top_row)
+
+        # Agregar tags si existen
+        self._add_tags_display(container_layout)
+
         parent_layout.addWidget(container)
 
     def _create_control_buttons(self) -> QWidget:
@@ -375,6 +387,61 @@ class ProjectComponentWidget(QWidget):
                 color: #000000;
             }
         """
+
+    def _add_tags_display(self, layout):
+        """Agrega la visualización de tags al componente"""
+        # Obtener tags del component_data
+        tags = self.component_data.get('tags', [])
+
+        if not tags:
+            return
+
+        tags_layout = QHBoxLayout()
+        tags_layout.setSpacing(4)
+        tags_layout.setContentsMargins(0, 4, 0, 0)
+
+        # Mostrar máximo 5 tags
+        max_visible_tags = 5
+        visible_tags = tags[:max_visible_tags]
+
+        for tag in visible_tags:
+            chip = self._create_simple_tag_chip(tag)
+            tags_layout.addWidget(chip)
+
+        # Si hay más tags, mostrar indicador "+X más"
+        if len(tags) > max_visible_tags:
+            remaining = len(tags) - max_visible_tags
+            more_label = QLabel(f"+{remaining}")
+            more_label.setStyleSheet("""
+                QLabel {
+                    color: #888888;
+                    font-size: 7pt;
+                    font-style: italic;
+                    padding: 2px 6px;
+                }
+            """)
+            tags_layout.addWidget(more_label)
+
+        tags_layout.addStretch()
+        layout.addLayout(tags_layout)
+
+    def _create_simple_tag_chip(self, tag):
+        """Crea un chip simple para mostrar un tag"""
+        chip = QLabel(tag.name)
+        chip.setFixedHeight(16)
+        chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        chip.setStyleSheet(f"""
+            QLabel {{
+                background-color: {tag.color};
+                color: #000000;
+                font-size: 7pt;
+                font-weight: bold;
+                border-radius: 8px;
+                padding: 2px 6px;
+                border: 1px solid {tag.color};
+            }}
+        """)
+        return chip
 
     def on_content_changed(self):
         """Al cambiar el contenido"""

@@ -450,6 +450,119 @@ class ProjectElementTagManager(QObject):
             logger.error(f"Error obteniendo relaciones por tag: {e}")
             return []
 
+    # ==================== COMPONENTES ====================
+
+    def assign_tags_to_component(self, component_id: int, tag_ids: List[int]) -> bool:
+        """
+        Asigna tags a un componente (reemplaza existentes)
+
+        Args:
+            component_id: ID del componente
+            tag_ids: Lista de IDs de tags a asignar
+
+        Returns:
+            True si se asignaron correctamente
+        """
+        try:
+            success = self.db.update_project_component_tags(component_id, tag_ids)
+
+            if success:
+                # Emitir señal por cada tag asociado
+                for tag_id in tag_ids:
+                    self.tag_associated.emit(component_id, tag_id)
+
+                logger.info(f"Tags asignados a componente {component_id}: {len(tag_ids)} tags")
+
+            return success
+
+        except Exception as e:
+            logger.error(f"Error asignando tags al componente: {e}")
+            return False
+
+    def add_tag_to_component(self, component_id: int, tag_id: int) -> bool:
+        """
+        Agrega un tag a un componente
+
+        Args:
+            component_id: ID del componente
+            tag_id: ID del tag
+
+        Returns:
+            True si se agregó correctamente
+        """
+        try:
+            success = self.db.add_tag_to_project_component(component_id, tag_id)
+
+            if success:
+                self.tag_associated.emit(component_id, tag_id)
+                logger.info(f"Tag {tag_id} asociado a componente {component_id}")
+
+            return success
+
+        except Exception as e:
+            logger.error(f"Error agregando tag al componente: {e}")
+            return False
+
+    def remove_tag_from_component(self, component_id: int, tag_id: int) -> bool:
+        """
+        Remueve un tag de un componente
+
+        Args:
+            component_id: ID del componente
+            tag_id: ID del tag
+
+        Returns:
+            True si se removió correctamente
+        """
+        try:
+            success = self.db.remove_tag_from_project_component(component_id, tag_id)
+
+            if success:
+                self.tag_removed.emit(component_id, tag_id)
+                logger.info(f"Tag {tag_id} removido de componente {component_id}")
+
+            return success
+
+        except Exception as e:
+            logger.error(f"Error removiendo tag del componente: {e}")
+            return False
+
+    def get_tags_for_component(self, component_id: int) -> List[ProjectElementTag]:
+        """
+        Obtiene tags de un componente
+
+        Args:
+            component_id: ID del componente
+
+        Returns:
+            Lista de tags del componente
+        """
+        try:
+            tags_data = self.db.get_tags_for_project_component(component_id)
+            return [create_tag_from_db_row(tag_data) for tag_data in tags_data]
+
+        except Exception as e:
+            logger.error(f"Error obteniendo tags del componente: {e}")
+            return []
+
+    def get_components_by_tag(self, tag_id: int) -> List[int]:
+        """
+        Obtiene IDs de componentes que tienen un tag
+
+        Args:
+            tag_id: ID del tag
+
+        Returns:
+            Lista de IDs de componentes
+        """
+        try:
+            components = self.db.get_project_components_by_tag(tag_id)
+            return [comp['id'] for comp in components]
+
+        except Exception as e:
+            logger.error(f"Error obteniendo componentes por tag: {e}")
+            return []
+
     # ==================== UTILIDADES ====================
 
     def get_tag_usage_count(self, tag_id: int) -> int:
@@ -512,6 +625,7 @@ class ProjectElementTagManager(QObject):
     def get_tags_for_project(self, project_id: int) -> List[ProjectElementTag]:
         """
         Obtiene los tags únicos usados en un proyecto específico
+        (incluye tags de relaciones y componentes)
 
         Args:
             project_id: ID del proyecto
@@ -520,14 +634,20 @@ class ProjectElementTagManager(QObject):
             Lista de tags únicos usados en el proyecto, ordenados por nombre
         """
         try:
-            # Obtener todas las relaciones del proyecto
-            relations = self.db.get_project_relations(project_id)
-
             # Recopilar IDs de tags únicos
             tag_ids = set()
+
+            # 1. Obtener tags de relaciones
+            relations = self.db.get_project_relations(project_id)
             for relation in relations:
-                # Obtener tags de cada relación
                 tags_data = self.db.get_tags_for_project_relation(relation['id'])
+                for tag_data in tags_data:
+                    tag_ids.add(tag_data['id'])
+
+            # 2. Obtener tags de componentes
+            components = self.db.get_project_components(project_id)
+            for component in components:
+                tags_data = self.db.get_tags_for_project_component(component['id'])
                 for tag_data in tags_data:
                     tag_ids.add(tag_data['id'])
 

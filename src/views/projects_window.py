@@ -452,6 +452,15 @@ class ProjectsWindow(QMainWindow):
 
     def _add_component_widget(self, component):
         """Agrega un widget de componente al canvas"""
+        # Obtener y agregar tags del componente
+        component_id = component.get('id')
+        if component_id:
+            tags_data = self.db.get_tags_for_project_component(component_id)
+            # Convertir a objetos ProjectElementTag
+            from src.models.project_element_tag import create_tag_from_db_row
+            tags = [create_tag_from_db_row(tag_data) for tag_data in tags_data]
+            component['tags'] = tags
+
         # Crear widget especializado
         widget = ProjectComponentWidget(
             component_data=component,
@@ -514,6 +523,15 @@ class ProjectsWindow(QMainWindow):
                 'content': item.get('content', ''),
                 'icon': ProjectCardWidget.TYPE_ICONS.get(component_type, '💬')
             }
+
+            # Obtener y agregar tags del componente
+            component_id = item.get('id')
+            if component_id:
+                tags_data = self.db.get_tags_for_project_component(component_id)
+                # Convertir a objetos ProjectElementTag
+                from src.models.project_element_tag import create_tag_from_db_row
+                tags = [create_tag_from_db_row(tag_data) for tag_data in tags_data]
+                card_data['tags'] = tags
 
             # Crear card
             card = ProjectCardWidget(
@@ -885,11 +903,23 @@ class ProjectsWindow(QMainWindow):
             return
 
         content = ""
+        tag_ids = []
+
         if component_type != 'divider':
-            from PyQt6.QtWidgets import QInputDialog
-            content, ok = QInputDialog.getText(self, "Agregar Componente", "Contenido:")
-            if not ok:
+            # Usar diálogo personalizado con selector de tags
+            from src.views.dialogs.component_editor_dialog import ComponentEditorDialog
+
+            dialog = ComponentEditorDialog(
+                tag_manager=self.tag_manager,
+                component_type=component_type,
+                parent=self
+            )
+
+            if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
+
+            content = dialog.get_content()
+            tag_ids = dialog.get_selected_tag_ids()
 
         # Calcular order_index basado en posición seleccionada
         order_index = None
@@ -903,11 +933,26 @@ class ProjectsWindow(QMainWindow):
                 # Incrementar order_index de todos los elementos posteriores
                 self._shift_order_indices_down(selected_order + 1)
 
+        # Agregar componente
         success = self.project_manager.add_component_to_project(
             self.current_project_id, component_type, content, order_index
         )
 
         if success:
+            # Si se agregó exitosamente y hay tags, asociarlos al componente
+            if tag_ids:
+                # Obtener el ID del componente recién creado
+                # Necesitamos obtener el último componente agregado
+                components = self.db.get_project_components(self.current_project_id)
+                if components:
+                    # El último componente es el recién agregado
+                    new_component = components[-1]
+                    component_id = new_component['id']
+
+                    # Asociar tags al componente
+                    self.tag_manager.assign_tags_to_component(component_id, tag_ids)
+                    logger.info(f"Tags asignados al componente {component_id}: {tag_ids}")
+
             self.load_project(self.current_project_id)
 
     def _filter_content_by_tags(self, content: list) -> list:
@@ -926,24 +971,28 @@ class ProjectsWindow(QMainWindow):
         filtered = []
 
         for item in content:
-            # Solo filtrar relaciones (los componentes siempre se muestran)
-            if item['type'] != 'relation':
-                filtered.append(item)
-                continue
+            item_tags_ids = []
 
-            # Obtener tags de la relación
-            relation_id = item.get('id')
-            relation_tags = self.tag_manager.get_relation_tags(relation_id)
-            relation_tag_ids = [tag.id for tag in relation_tags]
+            # Obtener tags según el tipo de elemento
+            if item['type'] == 'relation':
+                # Obtener tags de la relación
+                relation_id = item.get('id')
+                relation_tags = self.tag_manager.get_relation_tags(relation_id)
+                item_tags_ids = [tag.id for tag in relation_tags]
+            elif item['type'] == 'component':
+                # Obtener tags del componente
+                component_id = item.get('id')
+                component_tags = self.tag_manager.get_tags_for_component(component_id)
+                item_tags_ids = [tag.id for tag in component_tags]
 
             # Aplicar lógica de filtro
             if self.tag_filter_match_all:
                 # AND: debe tener TODOS los tags
-                if all(tag_id in relation_tag_ids for tag_id in self.active_tag_filters):
+                if all(tag_id in item_tags_ids for tag_id in self.active_tag_filters):
                     filtered.append(item)
             else:
                 # OR: debe tener AL MENOS uno
-                if any(tag_id in relation_tag_ids for tag_id in self.active_tag_filters):
+                if any(tag_id in item_tags_ids for tag_id in self.active_tag_filters):
                     filtered.append(item)
 
         logger.debug(f"Filtered {len(content)} items to {len(filtered)} items")
