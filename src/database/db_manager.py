@@ -6462,6 +6462,33 @@ class DBManager:
             logger.error(f"Error obteniendo project element tags: {e}")
             return []
 
+    def get_tags_for_project(self, project_id: int) -> List[Dict]:
+        """
+        Obtiene todos los tags asociados a un proyecto específico
+
+        Args:
+            project_id: ID del proyecto
+
+        Returns:
+            Lista de diccionarios con datos de tags ordenados por order_index
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT t.id, t.name, t.color, t.description,
+                       t.created_at, t.updated_at, o.order_index
+                FROM project_element_tags t
+                INNER JOIN project_tag_order o ON t.id = o.tag_id
+                WHERE o.project_id = ?
+                ORDER BY o.order_index ASC, t.name ASC
+            """, (project_id,))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error obteniendo tags del proyecto {project_id}: {e}")
+            return []
+
     def get_project_element_tag_by_id(self, tag_id: int) -> Optional[Dict]:
         """
         Obtiene un tag específico por su ID
@@ -7594,6 +7621,33 @@ class DBManager:
         """
         query = "SELECT * FROM area_element_tags ORDER BY name"
         return self.execute_query(query)
+
+    def get_tags_for_area(self, area_id: int) -> List[Dict]:
+        """
+        Obtiene todos los tags asociados a un área específica
+
+        Args:
+            area_id: ID del área
+
+        Returns:
+            Lista de diccionarios con datos de tags ordenados por order_index
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT t.id, t.name, t.color, t.description,
+                       t.created_at, t.updated_at, o.order_index
+                FROM area_element_tags t
+                INNER JOIN area_tag_order o ON t.id = o.tag_id
+                WHERE o.area_id = ?
+                ORDER BY o.order_index ASC, t.name ASC
+            """, (area_id,))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error obteniendo tags del área {area_id}: {e}")
+            return []
 
     def get_area_element_tag(self, tag_id: int) -> Optional[Dict]:
         """

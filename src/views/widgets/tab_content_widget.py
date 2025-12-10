@@ -45,18 +45,20 @@ class TabContentWidget(QWidget):
     create_project_tag_clicked = pyqtSignal()
     create_item_tag_clicked = pyqtSignal()
 
-    def __init__(self, tab_id: str, tab_name: str = "Sin título", parent=None):
+    def __init__(self, tab_id: str, tab_name: str = "Sin título", db_manager=None, parent=None):
         """
         Inicializa el widget de contenido de tab
 
         Args:
             tab_id: UUID del tab
             tab_name: Nombre del tab
+            db_manager: Instancia de DBManager para cargar tags
             parent: Widget padre
         """
         super().__init__(parent)
         self.tab_id = tab_id
         self.tab_name = tab_name
+        self.db_manager = db_manager
         self._setup_ui()
         self._connect_signals()
 
@@ -167,8 +169,18 @@ class TabContentWidget(QWidget):
         has_project_or_area = project_id is not None or self.context_section.get_area_id() is not None
         self.project_tags_section.show_for_project_or_area(has_project_or_area)
 
-        # TODO: Cargar tags del proyecto seleccionado
-        # Esto se implementará cuando tengamos acceso a DBManager
+        # Cargar tags del proyecto seleccionado
+        if project_id is not None and self.db_manager:
+            try:
+                tags = self.db_manager.get_tags_for_project(project_id)
+                tag_names = [tag['name'] for tag in tags]
+                self.project_tags_section.load_tags(tag_names)
+                logger.debug(f"Cargados {len(tag_names)} tags para proyecto {project_id}")
+            except Exception as e:
+                logger.error(f"Error cargando tags del proyecto {project_id}: {e}")
+        else:
+            # Limpiar tags si no hay proyecto seleccionado
+            self.project_tags_section.load_tags([])
 
         self._on_data_changed()
 
@@ -178,8 +190,18 @@ class TabContentWidget(QWidget):
         has_project_or_area = area_id is not None or self.context_section.get_project_id() is not None
         self.project_tags_section.show_for_project_or_area(has_project_or_area)
 
-        # TODO: Cargar tags del área seleccionada
-        # Esto se implementará cuando tengamos acceso a DBManager
+        # Cargar tags del área seleccionada
+        if area_id is not None and self.db_manager:
+            try:
+                tags = self.db_manager.get_tags_for_area(area_id)
+                tag_names = [tag['name'] for tag in tags]
+                self.project_tags_section.load_tags(tag_names)
+                logger.debug(f"Cargados {len(tag_names)} tags para área {area_id}")
+            except Exception as e:
+                logger.error(f"Error cargando tags del área {area_id}: {e}")
+        else:
+            # Limpiar tags si no hay área seleccionada
+            self.project_tags_section.load_tags([])
 
         self._on_data_changed()
 

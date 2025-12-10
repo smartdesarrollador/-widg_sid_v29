@@ -360,7 +360,7 @@ class BulkItemCreatorDialog(QWidget):
         tab_name = name or f"Tab {self.tab_widget.count() + 1}"
 
         # Crear widget de contenido
-        tab_content = TabContentWidget(tab_id, tab_name, parent=self)
+        tab_content = TabContentWidget(tab_id, tab_name, db_manager=self.db, parent=self)
 
         # Cargar datos disponibles
         self._load_tab_available_data(tab_content)
@@ -384,7 +384,7 @@ class BulkItemCreatorDialog(QWidget):
             draft: Borrador a cargar
         """
         # Crear widget de contenido
-        tab_content = TabContentWidget(draft.tab_id, draft.tab_name, parent=self)
+        tab_content = TabContentWidget(draft.tab_id, draft.tab_name, db_manager=self.db, parent=self)
 
         # Cargar datos disponibles
         self._load_tab_available_data(tab_content)
@@ -425,7 +425,7 @@ class BulkItemCreatorDialog(QWidget):
 
         # Cargar categorías
         try:
-            categories = self.config.get_all_categories()
+            categories = self.config.get_categories()
             if categories:
                 tab_content.load_available_categories([(c.id, c.name) for c in categories])
         except Exception as e:
