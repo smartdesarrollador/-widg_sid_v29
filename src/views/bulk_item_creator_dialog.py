@@ -236,20 +236,20 @@ class BulkItemCreatorDialog(QWidget):
         self.cancel_btn.clicked.connect(self.hide)
         layout.addWidget(self.cancel_btn)
 
-        # Botón Guardar y Crear Otro
-        self.save_and_new_btn = QPushButton("Guardar y + Otro")
-        self.save_and_new_btn.setFixedHeight(28)
-        self.save_and_new_btn.setMinimumWidth(120)
-        self.save_and_new_btn.clicked.connect(self._on_save_and_new)
-        layout.addWidget(self.save_and_new_btn)
+        # Botón Guardar Todas las Pestañas
+        self.save_all_btn = QPushButton("💾 Guardar Todas")
+        self.save_all_btn.setFixedHeight(28)
+        self.save_all_btn.setMinimumWidth(120)
+        self.save_all_btn.clicked.connect(self._on_save_all_tabs)
+        layout.addWidget(self.save_all_btn)
 
-        # Botón Guardar
-        self.save_btn = QPushButton("✓ Guardar")
-        self.save_btn.setFixedHeight(28)
-        self.save_btn.setMinimumWidth(80)
-        self.save_btn.setDefault(True)
-        self.save_btn.clicked.connect(self._on_save)
-        layout.addWidget(self.save_btn)
+        # Botón Guardar Pestaña Actual
+        self.save_current_btn = QPushButton("✓ Guardar Actual")
+        self.save_current_btn.setFixedHeight(28)
+        self.save_current_btn.setMinimumWidth(110)
+        self.save_current_btn.setDefault(True)
+        self.save_current_btn.clicked.connect(self._on_save_current_tab)
+        layout.addWidget(self.save_current_btn)
 
         return footer
 
@@ -596,34 +596,67 @@ class BulkItemCreatorDialog(QWidget):
         )
         self.info_label.setText(f"{count} tabs, {total_items} items")
 
-    def _on_save(self):
-        """Callback del botón Guardar"""
-        self._save_all_tabs(close_after=True)
+    def _on_save_current_tab(self):
+        """Callback del botón Guardar Pestaña Actual"""
+        # Obtener tab actual
+        current_tab = self._get_current_tab_content()
+        if not current_tab:
+            QMessageBox.warning(self, "Error", "No hay pestaña activa")
+            return
 
-    def _on_save_and_new(self):
-        """Callback del botón Guardar y Crear Otro"""
-        if self._save_all_tabs(close_after=False):
-            # Limpiar todos los tabs y crear uno nuevo
-            while self.tab_widget.count() > 0:
-                tab_content = self.tab_widget.widget(0)
-                if isinstance(tab_content, TabContentWidget):
-                    self.draft_manager.delete_draft(tab_content.get_tab_id())
-                self.tab_widget.removeTab(0)
+        # Validar solo campos obligatorios
+        valid, errors = current_tab.validate()
+        if not valid:
+            # Filtrar solo errores de campos obligatorios
+            obligatory_errors = self._filter_obligatory_errors(errors)
+            if obligatory_errors:
+                QMessageBox.warning(
+                    self,
+                    "Campos obligatorios incompletos",
+                    "Complete los siguientes campos obligatorios:\n\n" + "\n".join([f"• {err}" for err in obligatory_errors])
+                )
+                return
 
-            self.add_new_tab()
+        # Guardar items
+        try:
+            draft = current_tab.get_data()
+            count = self._save_items_from_draft(draft)
 
-    def _save_all_tabs(self, close_after: bool = True) -> bool:
-        """
-        Guarda todos los tabs en la BD
+            # Generar mensaje de resumen
+            summary_msg = self._generate_save_summary(draft, count)
 
-        Args:
-            close_after: Si cerrar el diálogo después de guardar
+            # Preguntar si desea limpiar la pestaña
+            reply = QMessageBox.question(
+                self,
+                "✅ Guardado exitoso",
+                f"{summary_msg}\n\n¿Desea limpiar la pestaña actual?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
 
-        Returns:
-            True si se guardó exitosamente
-        """
+            # Eliminar borrador
+            self.draft_manager.delete_draft(draft.tab_id)
+
+            # Limpiar si el usuario lo solicita
+            if reply == QMessageBox.StandardButton.Yes:
+                current_tab.clear_all()
+                logger.info("Pestaña actual limpiada después de guardar")
+
+            # Emitir señal
+            self.items_saved.emit(count)
+
+        except Exception as e:
+            logger.error(f"Error guardando pestaña actual: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Error al guardar items:\n{str(e)}"
+            )
+
+    def _on_save_all_tabs(self):
+        """Callback del botón Guardar Todas las Pestañas"""
         # Validar todos los tabs
-        errors = []
+        errors_by_tab = {}
         valid_tabs = []
 
         for i in range(self.tab_widget.count()):
@@ -633,56 +666,149 @@ class BulkItemCreatorDialog(QWidget):
 
             valid, tab_errors = tab_content.validate()
             if not valid:
-                errors.append(f"Tab '{tab_content.get_tab_name()}':")
-                errors.extend([f"  • {err}" for err in tab_errors])
+                # Filtrar solo errores obligatorios
+                obligatory_errors = self._filter_obligatory_errors(tab_errors)
+                if obligatory_errors:
+                    errors_by_tab[tab_content.get_tab_name()] = obligatory_errors
             else:
                 valid_tabs.append(tab_content)
 
         # Si hay errores, mostrar y abortar
-        if errors:
+        if errors_by_tab:
+            error_msg = "Complete los campos obligatorios en las siguientes pestañas:\n\n"
+            for tab_name, tab_errors in errors_by_tab.items():
+                error_msg += f"📑 {tab_name}:\n"
+                error_msg += "\n".join([f"  • {err}" for err in tab_errors])
+                error_msg += "\n\n"
+
             QMessageBox.warning(
                 self,
-                "Errores de validación",
-                "Se encontraron los siguientes errores:\n\n" + "\n".join(errors)
+                "Campos obligatorios incompletos",
+                error_msg.strip()
             )
-            return False
+            return
 
         # Guardar items de todos los tabs
         total_saved = 0
+        saved_tabs = []
 
         try:
             for tab_content in valid_tabs:
                 draft = tab_content.get_data()
                 count = self._save_items_from_draft(draft)
                 total_saved += count
+                saved_tabs.append((tab_content.get_tab_name(), count))
 
                 # Eliminar borrador después de guardar
                 self.draft_manager.delete_draft(draft.tab_id)
+
+            # Generar mensaje de resumen de todas las pestañas
+            summary_msg = f"✅ Se guardaron {total_saved} items correctamente desde {len(saved_tabs)} pestaña(s):\n\n"
+            for tab_name, count in saved_tabs:
+                summary_msg += f"📑 {tab_name}: {count} items\n"
 
             # Mostrar mensaje de éxito
             QMessageBox.information(
                 self,
                 "Guardado exitoso",
-                f"Se guardaron {total_saved} items correctamente."
+                summary_msg.strip()
             )
 
             # Emitir señal
             self.items_saved.emit(total_saved)
 
-            # Cerrar si corresponde
-            if close_after:
-                self.hide()
+            # Limpiar todos los tabs
+            for tab_content in valid_tabs:
+                tab_content.clear_all()
 
-            return True
+            logger.info(f"Guardadas {len(saved_tabs)} pestañas con {total_saved} items en total")
 
         except Exception as e:
-            logger.error(f"Error guardando items: {e}")
+            logger.error(f"Error guardando todas las pestañas: {e}")
             QMessageBox.critical(
                 self,
                 "Error",
                 f"Error al guardar items:\n{str(e)}"
             )
-            return False
+
+    def _filter_obligatory_errors(self, errors: list[str]) -> list[str]:
+        """
+        Filtra solo los errores de campos obligatorios
+
+        Args:
+            errors: Lista de errores de validación
+
+        Returns:
+            Lista con solo errores de campos obligatorios
+        """
+        obligatory_keywords = [
+            "obligatorio", "debe", "requerido", "necesario",
+            "seleccionar", "ingresar", "al menos"
+        ]
+
+        filtered = []
+        for error in errors:
+            error_lower = error.lower()
+            if any(keyword in error_lower for keyword in obligatory_keywords):
+                filtered.append(error)
+
+        return filtered
+
+    def _generate_save_summary(self, draft: ItemDraft, count: int) -> str:
+        """
+        Genera un mensaje de resumen personalizado según el tipo de guardado
+
+        Args:
+            draft: Borrador guardado
+            count: Cantidad de items guardados
+
+        Returns:
+            Mensaje de resumen
+        """
+        # Determinar tipo de guardado
+        has_project_or_area = draft.has_project_or_area()
+        is_list = draft.create_as_list
+
+        # Base del mensaje
+        msg = f"✅ Se guardaron {count} items correctamente"
+
+        # Si es lista
+        if is_list and draft.list_name:
+            msg += f" en la lista '{draft.list_name}'"
+
+            # Agregar relación con proyecto/área
+            if draft.project_id:
+                msg += f"\n📁 Relacionada con el proyecto"
+            elif draft.area_id:
+                msg += f"\n📁 Relacionada con el área"
+
+            # Agregar tags de proyecto/área
+            if draft.project_element_tags:
+                tags_str = ", ".join(draft.project_element_tags)
+                msg += f"\n🏷️ Tags: {tags_str}"
+
+        # Si es tag especial
+        elif has_project_or_area and draft.special_tag:
+            msg += f" con el tag '{draft.special_tag}'"
+
+            # Agregar relación con proyecto/área
+            if draft.project_id:
+                msg += f"\n📁 Relacionado con el proyecto"
+            elif draft.area_id:
+                msg += f"\n📁 Relacionado con el área"
+
+            # Agregar tags de proyecto/área
+            if draft.project_element_tags:
+                tags_str = ", ".join(draft.project_element_tags)
+                msg += f"\n🏷️ Tags del proyecto/área: {tags_str}"
+
+        # Modo simple (sin proyecto/área)
+        else:
+            if draft.item_tags:
+                tags_str = ", ".join(draft.item_tags)
+                msg += f"\n🏷️ Tags: {tags_str}"
+
+        return msg
 
     def _save_items_from_draft(self, draft: ItemDraft) -> int:
         """
