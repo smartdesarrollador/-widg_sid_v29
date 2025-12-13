@@ -11,9 +11,9 @@ Características:
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QScrollArea, QMenu, QSizePolicy, QGraphicsDropShadowEffect
+    QScrollArea, QMenu, QSizePolicy, QGraphicsDropShadowEffect, QApplication
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QSize, QPoint
+from PyQt6.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QSize, QPoint, QTimer
 from PyQt6.QtGui import QCursor, QColor, QFont
 import logging
 from typing import List, Dict, Optional
@@ -52,6 +52,7 @@ DIMENSIONS = {
     'badge_size': 18,
     'border_width': 3,
     'border_radius': 10,
+    'peek_width': 5,  # Ancho del borde visible cuando está colapsada
 }
 
 
@@ -322,6 +323,15 @@ class LeftSidebarManager(QWidget):
         self.windows_section = None
         self.all_items = {}  # Registro de todos los items: window -> section_type
 
+        # Estado de expansión
+        self.is_expanded = False
+
+        # Timer para auto-hide
+        self.auto_hide_timer = QTimer()
+        self.auto_hide_timer.setSingleShot(True)
+        self.auto_hide_timer.setInterval(3000)  # 3 segundos
+        self.auto_hide_timer.timeout.connect(self._auto_hide)
+
         self.init_ui()
         self.hide()  # Oculto por defecto
 
@@ -530,6 +540,7 @@ class LeftSidebarManager(QWidget):
             self.all_items[panel] = 'panel'
             self._update_counter()
             self._update_visibility()
+            self._restart_auto_hide_timer()  # Reiniciar timer al agregar item
 
             logger.info(f"Panel minimized: {button.window_title}")
 
@@ -548,6 +559,7 @@ class LeftSidebarManager(QWidget):
             self.all_items[window] = 'window'
             self._update_counter()
             self._update_visibility()
+            self._restart_auto_hide_timer()  # Reiniciar timer al agregar item
 
             logger.info(f"Window minimized: {button.window_title}")
 
@@ -662,6 +674,80 @@ class LeftSidebarManager(QWidget):
             for item in items:
                 self.close_item(item)
 
+    def _restart_auto_hide_timer(self):
+        """Reiniciar timer de auto-hide"""
+        if len(self.all_items) > 0:
+            self.auto_hide_timer.stop()
+            self.auto_hide_timer.start()
+            logger.debug("Auto-hide timer restarted")
+
+    def _auto_hide(self):
+        """Colapsar barra lateral a modo peek automáticamente"""
+        if len(self.all_items) > 0 and self.is_expanded:
+            logger.info("Auto-collapsing sidebar to peek mode after timeout")
+            self._collapse_to_peek()
+
+    def _show_sidebar(self):
+        """Expandir barra lateral completamente y reiniciar timer"""
+        if not self.is_expanded:
+            self._expand_from_peek()
+        self._restart_auto_hide_timer()
+
+    def _collapse_to_peek(self):
+        """Colapsar barra lateral a modo peek (solo borde visible)"""
+        if not self.is_expanded:
+            return
+
+        self.is_expanded = False
+        self.auto_hide_timer.stop()
+
+        # Animación de colapso (mostrar solo peek)
+        start_x = 0
+        end_x = -(DIMENSIONS['sidebar_width'] - DIMENSIONS['peek_width'])
+
+        self.animation = QPropertyAnimation(self, b"pos")
+        self.animation.setDuration(300)
+        self.animation.setStartValue(QPoint(start_x, self.y()))
+        self.animation.setEndValue(QPoint(end_x, self.y()))
+        self.animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self.animation.start()
+
+        logger.info("Sidebar collapsed to peek mode")
+
+    def _expand_from_peek(self):
+        """Expandir barra lateral desde modo peek"""
+        if self.is_expanded:
+            return
+
+        self.is_expanded = True
+
+        # Animación de expansión (mostrar completa)
+        start_x = self.x()
+        end_x = 0
+
+        self.animation = QPropertyAnimation(self, b"pos")
+        self.animation.setDuration(300)
+        self.animation.setStartValue(QPoint(start_x, self.y()))
+        self.animation.setEndValue(QPoint(end_x, self.y()))
+        self.animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self.animation.start()
+
+        logger.info("Sidebar expanded from peek mode")
+
+    def enterEvent(self, event):
+        """Expandir cuando el mouse entra en el área de la barra"""
+        if len(self.all_items) > 0:
+            self.auto_hide_timer.stop()
+            if not self.is_expanded:
+                self._expand_from_peek()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """Reiniciar auto-hide cuando el mouse sale de la barra"""
+        if len(self.all_items) > 0 and self.is_expanded:
+            self._restart_auto_hide_timer()
+        super().leaveEvent(event)
+
     def _update_counter(self):
         """Actualizar contador total"""
         count = len(self.all_items)
@@ -671,32 +757,26 @@ class LeftSidebarManager(QWidget):
         """Actualizar visibilidad de la barra"""
         if len(self.all_items) > 0:
             if not self.isVisible():
-                self._show_with_animation()
+                self._show_in_peek_mode()
         else:
             if self.isVisible():
-                self._hide_with_animation()
+                self._hide_completely()
 
-    def _show_with_animation(self):
-        """Mostrar con animación slide-in desde izquierda"""
+    def _show_in_peek_mode(self):
+        """Mostrar barra en modo peek (solo borde visible)"""
         self.show()
         self.position_on_screen()
 
-        # Animación de posición (slide desde izquierda)
-        start_x = -self.width()
-        end_x = 0
+        # Posicionar en modo peek (parcialmente oculta)
+        peek_x = -(DIMENSIONS['sidebar_width'] - DIMENSIONS['peek_width'])
+        self.move(peek_x, self.y())
 
-        self.animation = QPropertyAnimation(self, b"pos")
-        self.animation.setDuration(300)
-        self.animation.setStartValue(QPoint(start_x, self.y()))
-        self.animation.setEndValue(QPoint(end_x, self.y()))
-        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.animation.start()
+        self.is_expanded = False
+        logger.info("Left sidebar shown in peek mode")
 
-        logger.info("Left sidebar shown with animation")
-
-    def _hide_with_animation(self):
-        """Ocultar con animación slide-out hacia izquierda"""
-        # Animación de posición (slide hacia izquierda)
+    def _hide_completely(self):
+        """Ocultar completamente la barra"""
+        # Animación de posición (slide hacia izquierda completamente)
         start_x = self.x()
         end_x = -self.width()
 
@@ -705,10 +785,15 @@ class LeftSidebarManager(QWidget):
         self.animation.setStartValue(QPoint(start_x, self.y()))
         self.animation.setEndValue(QPoint(end_x, self.y()))
         self.animation.setEasingCurve(QEasingCurve.Type.InCubic)
-        self.animation.finished.connect(self.hide)
+        self.animation.finished.connect(self._on_hide_complete)
         self.animation.start()
 
-        logger.info("Left sidebar hidden with animation")
+        logger.info("Left sidebar hiding completely")
+
+    def _on_hide_complete(self):
+        """Callback cuando termina la animación de ocultar"""
+        self.hide()
+        self.is_expanded = False
 
     def resizeEvent(self, event):
         """Reposicionar al cambiar tamaño"""
