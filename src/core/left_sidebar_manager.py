@@ -540,7 +540,11 @@ class LeftSidebarManager(QWidget):
             self.all_items[panel] = 'panel'
             self._update_counter()
             self._update_visibility()
-            self._restart_auto_hide_timer()  # Reiniciar timer al agregar item
+
+            # Expandir temporalmente si está en peek mode
+            if self.isVisible() and not self.is_expanded:
+                self._expand_from_peek()
+                self._restart_auto_hide_timer()
 
             logger.info(f"Panel minimized: {button.window_title}")
 
@@ -559,7 +563,11 @@ class LeftSidebarManager(QWidget):
             self.all_items[window] = 'window'
             self._update_counter()
             self._update_visibility()
-            self._restart_auto_hide_timer()  # Reiniciar timer al agregar item
+
+            # Expandir temporalmente si está en peek mode
+            if self.isVisible() and not self.is_expanded:
+                self._expand_from_peek()
+                self._restart_auto_hide_timer()
 
             logger.info(f"Window minimized: {button.window_title}")
 
@@ -757,7 +765,7 @@ class LeftSidebarManager(QWidget):
         """Actualizar visibilidad de la barra"""
         if len(self.all_items) > 0:
             if not self.isVisible():
-                self._show_in_peek_mode()
+                self._show_expanded_temporarily()
         else:
             if self.isVisible():
                 self._hide_completely()
@@ -773,6 +781,20 @@ class LeftSidebarManager(QWidget):
 
         self.is_expanded = False
         logger.info("Left sidebar shown in peek mode")
+
+    def _show_expanded_temporarily(self):
+        """Mostrar barra expandida temporalmente, luego colapsar a peek después de 3 segundos"""
+        self.show()
+        self.position_on_screen()
+
+        # Posicionar completamente visible
+        self.move(0, self.y())
+        self.is_expanded = True
+
+        # Iniciar timer para colapsar a peek después de 3 segundos
+        self._restart_auto_hide_timer()
+
+        logger.info("Left sidebar shown expanded temporarily")
 
     def _hide_completely(self):
         """Ocultar completamente la barra"""
